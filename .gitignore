@@ -1,0 +1,29 @@
+# 依赖与产物
+__pycache__/
+*.pyc
+.env
+.venv/
+venv/
+node_modules/
+*.log
+
+# 数据与产物
+shared/outputs/*
+!shared/outputs/.gitkeep
+*.docx
+*.pptx
+!**/templates/*.docx
+!**/templates/*.pptx
+
+# Docker 数据卷
+data/
+volumes/
+
+# worktree 目录（不提交进主仓库）
+.worktrees/
+
+# 系统
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
