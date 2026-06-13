@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 .env
+infra/chatgpt-on-wechat/config.json
 .venv/
 venv/
 node_modules/

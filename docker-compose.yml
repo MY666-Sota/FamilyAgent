@@ -66,19 +66,43 @@ services:
       - ollama
 
   # ── 接入层：企业微信入口 ────────────────────────────────────────────
+  # 消息接收：chatgpt-on-wechat 官方镜像 + orchestrator_forwarder 插件
   chatgpt-on-wechat:
     image: zhayujie/chatgpt-on-wechat:latest
     restart: unless-stopped
     env_file: .env
     environment:
-      # 路由到编排核心（docker 内网）
       ORCHESTRATOR_URL: "http://host.docker.internal:8081"
+      WECHAT_CORP_ID: ${WECHAT_CORP_ID}
+      WECHAT_APP_SECRET: ${WECHAT_APP_SECRET}
+      WECHAT_AGENT_ID: ${WECHAT_AGENT_ID}
+      WECHAT_TOKEN: ${WECHAT_TOKEN}
+      WECHAT_AES_KEY: ${WECHAT_AES_KEY}
     volumes:
       - ./infra/chatgpt-on-wechat/config.json:/app/config.json:ro
+      # 挂载自定义插件
+      - ./infra/chatgpt-on-wechat/plugins/orchestrator_forwarder:/app/plugins/orchestrator_forwarder:ro
     ports:
-      - "8080:80"
+      - "8079:80"    # 内部端口，nginx 反代转 8080
     depends_on:
       - redis
+
+  # 结果推送：编排核心回调此服务，再由此服务调企微发送消息
+  # 实现 INTERFACE_CONTRACT 接口一.3 的 POST /v1/reply
+  wechat-reply-server:
+    build:
+      context: ./infra/chatgpt-on-wechat/reply_server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      WECHAT_CORP_ID: ${WECHAT_CORP_ID}
+      WECHAT_APP_SECRET: ${WECHAT_APP_SECRET}
+      WECHAT_AGENT_ID: ${WECHAT_AGENT_ID}
+    ports:
+      - "8080:8080"
+    depends_on:
+      - chatgpt-on-wechat
 
   # ── 知识库层：Dify ─────────────────────────────────────────────────
   dify-api:

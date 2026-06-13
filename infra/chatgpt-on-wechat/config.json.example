@@ -1,10 +1,6 @@
 {
   "channel_type": "wework",
-  "model": "claude",
-  "single_chat_prefix": [""],
-  "single_chat_reply_prefix": "",
-  "group_chat_prefix": ["@bot"],
-  "group_name_white_list": ["ALL_GROUP"],
+  "model": "chatgpt",
 
   "wework_corp_id": "${WECHAT_CORP_ID}",
   "wework_app_secret": "${WECHAT_APP_SECRET}",
@@ -12,17 +8,18 @@
   "wework_token": "${WECHAT_TOKEN}",
   "wework_aes_key": "${WECHAT_AES_KEY}",
 
-  "use_linkai": false,
+  "single_chat_prefix": [""],
+  "single_chat_reply_prefix": "",
+  "group_chat_prefix": ["@bot"],
+  "group_name_white_list": ["ALL_GROUP"],
 
   "plugin_trigger_prefix": "#",
-  "plugins": [],
-
-  "custom_bot": {
-    "enabled": true,
-    "forward_url": "http://host.docker.internal:8081/v1/message",
-    "reply_field": "content"
-  },
 
   "expires_in_seconds": 3600,
-  "debug": false
+  "debug": false,
+
+  "open_ai_api_key": "placeholder-not-used",
+  "open_ai_api_base": "http://127.0.0.1:1/",
+
+  "plugins": ["orchestrator_forwarder"]
 }
