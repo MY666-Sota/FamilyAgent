@@ -6,7 +6,6 @@ reply_endpoint — 接收编排核心的回调，通过企微发送结果给用�
   { "user_id": str, "content_type": "text"|"file", "content": str, "file_url": str|null }
 """
 import os
-import asyncio
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import httpx
