@@ -223,6 +223,48 @@ services:
       postgres:
         condition: service_healthy
 
+  # ── 能力层：OCR & PPT ─────────────────────────────────────────────
+  # 作业 OCR（供 MCP 工具调用，见 shared/mcp_registry.json port 9003）
+  paddleocr:
+    image: paddlepaddle/paddle:2.6.1-gpu-cuda12.0-cudnn8.9-trt8.6
+    restart: unless-stopped
+    command: >
+      python -m paddle_serving_server.serve
+      --model /models/paddleocr
+      --port 8868
+    volumes:
+      - paddleocr_models:/models
+    ports:
+      - "8868:8868"
+    # 无 GPU 时改用 CPU 镜像：paddlepaddle/paddle:2.6.1
+
+  # PPT 生成（Presenton，供 MCP 工具调用，见 shared/mcp_registry.json port 9002）
+  presenton:
+    image: ghcr.io/prezentoss/presenton:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_BASE_URL: ${OPENAI_API_BASE}
+    volumes:
+      - presenton_data:/app/data
+      - ./shared/outputs:/app/outputs
+    ports:
+      - "7860:7860"
+
+  # ── 内网穿透：Cloudflare Tunnel ────────────────────────────────────
+  # 仅在需要外网访问时启动，TOKEN 留空则此服务不启动
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - nginx
+    profiles:
+      - tunnel
+
   # ── 反向代理 ────────────────────────────────────────────────────────
   nginx:
     image: nginx:alpine
@@ -244,3 +286,5 @@ volumes:
   xinference_data:
   dify_storage:
   weaviate_data:
+  paddleocr_models:
+  presenton_data:
