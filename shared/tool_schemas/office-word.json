@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "office-word tools",
+  "tools": {
+    "create_document": {
+      "description": "创建 Word 文档（.docx）并保存到 shared/outputs/",
+      "input": {
+        "type": "object",
+        "required": ["filename", "content"],
+        "properties": {
+          "filename": {"type": "string", "description": "输出文件名，例如 report.docx"},
+          "content":  {"type": "string", "description": "Markdown 或纯文本正文"},
+          "title":    {"type": "string", "description": "文档标题（可选）", "default": ""},
+          "author":   {"type": "string", "description": "作者名（可选）", "default": "FamilyAgent"}
+        }
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "file_url":  {"type": "string", "description": "http://localhost:8090/files/{filename}"},
+          "filename":  {"type": "string"}
+        }
+      }
+    },
+    "read_document": {
+      "description": "读取 shared/outputs/ 中的 Word 文档，返回纯文本",
+      "input": {
+        "type": "object",
+        "required": ["filename"],
+        "properties": {
+          "filename": {"type": "string"}
+        }
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "content":  {"type": "string"},
+          "filename": {"type": "string"}
+        }
+      }
+    },
+    "list_documents": {
+      "description": "列出 shared/outputs/ 中所有 .docx 文件",
+      "input": {"type": "object", "properties": {}},
+      "output": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "filename": {"type": "string"},
+                "file_url": {"type": "string"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "append_to_document": {
+      "description": "向已有 Word 文档追加内容",
+      "input": {
+        "type": "object",
+        "required": ["filename", "content"],
+        "properties": {
+          "filename": {"type": "string"},
+          "content":  {"type": "string"}
+        }
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "file_url":  {"type": "string"},
+          "filename":  {"type": "string"}
+        }
+      }
+    }
+  }
+}

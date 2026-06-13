@@ -1,0 +1,100 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "filesystem tools",
+  "tools": {
+    "list_files": {
+      "description": "列出 shared/outputs/ 下指定子目录的文件",
+      "input": {
+        "type": "object",
+        "properties": {
+          "directory": {"type": "string", "default": "", "description": "相对路径，留空则列出根目录"}
+        }
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name":   {"type": "string"},
+                "size":   {"type": "integer"},
+                "is_dir": {"type": "boolean"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "read_file": {
+      "description": "读取 shared/outputs/ 下的文本文件内容",
+      "input": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": {"type": "string", "description": "相对于 shared/outputs/ 的文件路径"}
+        }
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "content": {"type": "string"},
+          "size":    {"type": "integer"}
+        }
+      }
+    },
+    "write_file": {
+      "description": "在 shared/outputs/ 下写入文本文件",
+      "input": {
+        "type": "object",
+        "required": ["path", "content"],
+        "properties": {
+          "path":      {"type": "string"},
+          "content":   {"type": "string"},
+          "overwrite": {"type": "boolean", "default": false}
+        }
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "path": {"type": "string"},
+          "size": {"type": "integer"}
+        }
+      }
+    },
+    "delete_file": {
+      "description": "删除 shared/outputs/ 下的文件",
+      "input": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": {"type": "string"}
+        }
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "deleted": {"type": "string"}
+        }
+      }
+    },
+    "file_exists": {
+      "description": "检查 shared/outputs/ 下文件是否存在",
+      "input": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": {"type": "string"}
+        }
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "exists": {"type": "boolean"},
+          "is_dir": {"type": "boolean"}
+        }
+      }
+    }
+  }
+}

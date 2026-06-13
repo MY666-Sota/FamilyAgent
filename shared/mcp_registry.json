@@ -1,1 +1,30 @@
-[]
+[
+  {
+    "name": "office-word",
+    "transport": "sse",
+    "url": "http://localhost:9001/sse",
+    "description": "Word 文档生成与编辑（GongRzhe/Office-Word-MCP-Server 代理）",
+    "tools": ["create_document", "read_document", "list_documents", "append_to_document"]
+  },
+  {
+    "name": "presenton",
+    "transport": "sse",
+    "url": "http://localhost:9002/sse",
+    "description": "PPT 生成（封装 Presenton HTTP API）",
+    "tools": ["generate_ppt", "generate_ppt_from_markdown", "list_ppts"]
+  },
+  {
+    "name": "paddleocr",
+    "transport": "sse",
+    "url": "http://localhost:9003/sse",
+    "description": "图片 OCR 识别（桥接 PaddleOCR-VL :8868）",
+    "tools": ["ocr_image", "ocr_image_structured"]
+  },
+  {
+    "name": "filesystem",
+    "transport": "stdio",
+    "command": "python tools/filesystem-mcp/server.py",
+    "description": "本地文件读写（限定 shared/outputs/ 根路径）",
+    "tools": ["list_files", "read_file", "write_file", "delete_file", "file_exists"]
+  }
+]
