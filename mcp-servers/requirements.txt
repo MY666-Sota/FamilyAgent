@@ -1,0 +1,19 @@
+# MCP 工具层公共依赖
+# Python >= 3.11
+
+# MCP SDK
+mcp[cli]==1.9.4
+
+# HTTP 客户端（SSE server 内部调用上游服务）
+httpx==0.27.2
+
+# SSE / 异步 web（FastMCP SSE 传输底层）
+uvicorn[standard]==0.30.6
+starlette==0.41.3
+
+# 文件服务（tools/file-server）
+fastapi==0.115.6
+python-multipart==0.0.12
+
+# 工具库
+anyio==4.6.2

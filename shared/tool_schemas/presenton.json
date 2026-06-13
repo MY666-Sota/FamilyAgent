@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "presenton tools",
+  "tools": {
+    "generate_ppt": {
+      "description": "根据主题和大纲生成 PPT（.pptx）",
+      "input": {
+        "type": "object",
+        "required": ["filename", "topic", "outline"],
+        "properties": {
+          "filename": {"type": "string", "description": "输出文件名，例如 review.pptx"},
+          "topic":    {"type": "string", "description": "PPT 主题"},
+          "outline":  {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "幻灯片大纲，每项对应一页标题+要点"
+          },
+          "style":    {
+            "type": "string",
+            "enum": ["professional", "educational", "minimal"],
+            "default": "professional"
+          },
+          "language": {"type": "string", "enum": ["zh", "en"], "default": "zh"}
+        }
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "file_url":    {"type": "string"},
+          "filename":    {"type": "string"},
+          "slide_count": {"type": "integer"}
+        }
+      }
+    },
+    "generate_ppt_from_markdown": {
+      "description": "把 Markdown 文档转换为 PPT，每个 ## 标题变一页",
+      "input": {
+        "type": "object",
+        "required": ["filename", "markdown"],
+        "properties": {
+          "filename": {"type": "string"},
+          "markdown": {"type": "string", "description": "Markdown 文本，用 ## 分隔幻灯片"},
+          "style":    {
+            "type": "string",
+            "enum": ["professional", "educational", "minimal"],
+            "default": "educational"
+          }
+        }
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "file_url":    {"type": "string"},
+          "filename":    {"type": "string"},
+          "slide_count": {"type": "integer"}
+        }
+      }
+    },
+    "list_ppts": {
+      "description": "列出 shared/outputs/ 中所有 .pptx 文件",
+      "input": {"type": "object", "properties": {}},
+      "output": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "filename": {"type": "string"},
+                "file_url": {"type": "string"}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "paddleocr tools",
+  "tools": {
+    "ocr_image": {
+      "description": "对图片进行 OCR 识别（支持手写体、印刷体、作业图片）",
+      "input": {
+        "type": "object",
+        "properties": {
+          "image_path":    {"type": "string", "description": "本地文件路径（与 image_url 二选一）"},
+          "image_url":     {"type": "string", "description": "图片 HTTP URL（与 image_path 二选一）"},
+          "language":      {
+            "type": "string",
+            "enum": ["ch", "en", "ch_en"],
+            "default": "ch",
+            "description": "识别语言"
+          },
+          "return_layout": {"type": "boolean", "default": false, "description": "是否返回布局框坐标+置信度"}
+        }
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "text":   {"type": "string", "description": "全文拼接"},
+          "lines":  {"type": "array", "items": {"type": "string"}, "description": "按行分割的文本"},
+          "layout": {
+            "type": "array",
+            "description": "布局框（仅 return_layout=true 时有值）",
+            "items": {
+              "type": "object",
+              "properties": {
+                "text":  {"type": "string"},
+                "box":   {"type": "array"},
+                "score": {"type": "number"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "ocr_image_structured": {
+      "description": "针对作业图片做结构化 OCR，识别题目和答案",
+      "input": {
+        "type": "object",
+        "properties": {
+          "image_path": {"type": "string"},
+          "image_url":  {"type": "string"},
+          "subject":    {
+            "type": "string",
+            "enum": ["math", "chinese", "english"],
+            "default": "math"
+          }
+        }
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "raw_text":  {"type": "string"},
+          "questions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "number":  {"type": "string"},
+                "content": {"type": "string"},
+                "answer":  {"type": "string"}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
