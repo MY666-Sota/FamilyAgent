@@ -193,6 +193,7 @@ services:
     environment:
       DIFY_API_URL: http://dify-api
       DIFY_API_KEY: ${DIFY_API_KEY}
+      DIFY_DATASET_ID: ${DIFY_DATASET_ID}
     ports:
       - "5001:5001"
     depends_on:
@@ -207,9 +208,13 @@ services:
     env_file: .env
     environment:
       POSTGRES_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       OPENAI_API_BASE: ${OPENAI_API_BASE}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL}
+      EMBEDDING_BASE_URL: http://xinference:9997/v1
       LLM_MODEL: ${LLM_MODEL}
     ports:
       - "8082:8082"
@@ -227,6 +232,7 @@ services:
       - "80:80"
     depends_on:
       - chatgpt-on-wechat
+      - wechat-reply-server
       - dify-adapter
       - mem0
 
