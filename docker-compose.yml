@@ -2,7 +2,7 @@ services:
 
   # ── 基础数据层 ─────────────────────────────────────────────────────
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     restart: unless-stopped
     env_file: .env
     environment:
@@ -11,6 +11,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01_pgvector.sql:ro
     ports:
       - "5432:5432"
     healthcheck:
@@ -66,9 +67,11 @@ services:
       - ollama
 
   # ── 接入层：企业微信入口 ────────────────────────────────────────────
-  # 消息接收：chatgpt-on-wechat 官方镜像 + orchestrator_forwarder 插件
+  # 消息接收：自定义构建（官方镜像 + orchestrator_forwarder 插件 baked in）
   chatgpt-on-wechat:
-    image: zhayujie/chatgpt-on-wechat:latest
+    build:
+      context: ./infra/chatgpt-on-wechat
+      dockerfile: Dockerfile
     restart: unless-stopped
     env_file: .env
     environment:
@@ -80,10 +83,8 @@ services:
       WECHAT_AES_KEY: ${WECHAT_AES_KEY}
     volumes:
       - ./infra/chatgpt-on-wechat/config.json:/app/config.json:ro
-      # 挂载自定义插件
-      - ./infra/chatgpt-on-wechat/plugins/orchestrator_forwarder:/app/plugins/orchestrator_forwarder:ro
     ports:
-      - "8079:80"    # 内部端口，nginx 反代转 8080
+      - "8079:80"
     depends_on:
       - redis
 
