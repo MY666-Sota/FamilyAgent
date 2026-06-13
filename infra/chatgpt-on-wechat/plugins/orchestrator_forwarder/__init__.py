@@ -40,11 +40,12 @@ class OrchestratorForwarder(Plugin):
         media_url = None
         if ctx.type == ContextType.IMAGE:
             msg_type = "image"
-            media_url = content
+            # content is a local path; download URL is available via msg.content_url when present
+            media_url = getattr(msg, "content_url", None) or content
             content = ""
         elif ctx.type == ContextType.FILE:
             msg_type = "file"
-            media_url = content
+            media_url = getattr(msg, "content_url", None) or content
             content = ""
 
         payload = {

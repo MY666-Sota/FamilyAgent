@@ -47,7 +47,7 @@ def _build_mem0_config() -> dict:
                 "collection_name": "mem0_vectors",
                 "embedding_model_dims": 1536,
                 "host": _pg_host(),
-                "port": int(os.environ.get("PGPORT", "5432")),
+                "port": 5432,
                 "user": os.environ.get("POSTGRES_USER", "familyagent"),
                 "password": os.environ.get("POSTGRES_PASSWORD", ""),
             },

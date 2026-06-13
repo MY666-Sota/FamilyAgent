@@ -192,7 +192,7 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      DIFY_API_URL: http://dify-api
+      DIFY_API_URL: http://dify-api:5001
       DIFY_API_KEY: ${DIFY_API_KEY}
       DIFY_DATASET_ID: ${DIFY_DATASET_ID}
     ports:
