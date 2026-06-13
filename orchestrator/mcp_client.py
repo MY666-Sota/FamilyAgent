@@ -17,7 +17,10 @@ logger = logging.getLogger(__name__)
 # orchestrator/mcp_client.py → ../shared/mcp_registry.json
 _REGISTRY_PATH = Path(__file__).parent.parent / "shared" / "mcp_registry.json"
 
-_USE_REAL_MCP = False
+from orchestrator import config as _cfg
+
+def _use_real_mcp() -> bool:
+    return _cfg.USE_REAL_MCP
 
 
 def _load_registry() -> list[dict[str, Any]]:
@@ -58,7 +61,7 @@ async def call_tool(
     registry = get_registry()
     server = next((s for s in registry if s["name"] == server_name), None)
 
-    if _USE_REAL_MCP and server:
+    if _use_real_mcp() and server:
         return await _real_call(server, tool_name, arguments)
 
     # mock：记录调用，返回占位结果
