@@ -1,52 +1,18 @@
 """
 MCP Client — 按 INTERFACE_CONTRACT.md §2 调用窗口3 暴露的 MCP Server。
 
-当前阶段：mock 实现。
-读取 shared/mcp_registry.json 获取 server 列表；
-真实 MCP 调用（SSE/stdio transport）在窗口3 就绪后切换 _USE_REAL_MCP = True 即可。
+当前阶段：支持真实 SSE transport（需窗口3 MCP Servers 启动），
+同时在 server 未就绪时优雅降级到 mock，保证 mock 模式仍可独立测试。
 """
 import json
 import logging
-import os
-from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
-# shared/mcp_registry.json 相对于本文件的位置：
-# orchestrator/mcp_client.py → ../shared/mcp_registry.json
-_REGISTRY_PATH = Path(__file__).parent.parent / "shared" / "mcp_registry.json"
+import httpx
 
 from orchestrator import config as _cfg
 
-def _use_real_mcp() -> bool:
-    return _cfg.USE_REAL_MCP
-
-
-def _load_registry() -> list[dict[str, Any]]:
-    try:
-        return json.loads(_REGISTRY_PATH.read_text(encoding="utf-8"))
-    except Exception as exc:
-        logger.warning("无法读取 mcp_registry.json: %s，返回空列表", exc)
-        return []
-
-
-# 缓存注册表，避免每次调用都重新读文件
-_registry: list[dict[str, Any]] | None = None
-
-
-def get_registry() -> list[dict[str, Any]]:
-    global _registry
-    if _registry is None:
-        _registry = _load_registry()
-    return _registry
-
-
-def reload_registry() -> list[dict[str, Any]]:
-    """强制重新读取注册表（窗口3 更新后可调用）。"""
-    global _registry
-    _registry = _load_registry()
-    return _registry
+logger = logging.getLogger(__name__)
 
 
 async def call_tool(
@@ -56,38 +22,78 @@ async def call_tool(
 ) -> dict[str, Any]:
     """
     调用指定 MCP Server 的工具。
-    server_name 对应 mcp_registry.json 中的 name 字段。
+    server_name 对应 config.MCP_SERVERS 的 key。
+    USE_REAL_MCP=false 时始终 mock。
+    USE_REAL_MCP=true 时尝试真实调用，失败后自动降级 mock。
     """
-    registry = get_registry()
-    server = next((s for s in registry if s["name"] == server_name), None)
+    if not _cfg.USE_REAL_MCP:
+        return await _mock_call(server_name, tool_name, arguments)
 
-    if _use_real_mcp() and server:
-        return await _real_call(server, tool_name, arguments)
+    server_url = _cfg.MCP_SERVERS.get(server_name)
+    if not server_url:
+        logger.warning("[MCP] 未知 server=%s，使用 mock", server_name)
+        return await _mock_call(server_name, tool_name, arguments)
 
-    # mock：记录调用，返回占位结果
-    logger.info(
-        "[mock MCP] server=%s tool=%s args=%s",
-        server_name, tool_name, arguments,
-    )
+    try:
+        return await _sse_call(server_url, tool_name, arguments)
+    except httpx.ConnectError as exc:
+        logger.warning("[MCP] SSE 连接失败 server=%s url=%s，降级 mock: %s",
+                       server_name, server_url, exc)
+        return await _mock_call(server_name, tool_name, arguments)
+    except Exception as exc:
+        logger.error("[MCP] 调用异常 server=%s tool=%s: %s", server_name, tool_name, exc)
+        return {
+            "status": "error",
+            "server": server_name,
+            "tool": tool_name,
+            "error": str(exc),
+            "file_url": None,
+        }
+
+
+async def _mock_call(
+    server_name: str,
+    tool_name: str,
+    arguments: dict[str, Any],
+) -> dict[str, Any]:
+    """Mock 调用：记录参数，返回占位结果。"""
+    logger.info("[mock MCP] server=%s tool=%s args=%s", server_name, tool_name, arguments)
     return {
         "status": "mock_ok",
         "server": server_name,
         "tool": tool_name,
-        "result": f"[mock] {tool_name} 执行成功（真实服务未就绪）",
+        "result": f"[mock] {tool_name} 执行成功（真实服务未就绪或 USE_REAL_MCP=false）",
         "file_url": None,
     }
 
 
-async def _real_call(
-    server: dict[str, Any],
+async def _sse_call(
+    server_url: str,
     tool_name: str,
     arguments: dict[str, Any],
 ) -> dict[str, Any]:
-    """真实 MCP 调用占位（SSE transport）。窗口3 就绪后实现。"""
-    transport = server.get("transport", "sse")
-    if transport == "sse":
-        # TODO: 使用 mcp Python SDK 的 SSE client
-        # from mcp import ClientSession
-        # from mcp.client.sse import sse_client
-        raise NotImplementedError("SSE MCP client 待窗口3 就绪后实现")
-    raise NotImplementedError(f"transport={transport} 暂不支持")
+    """
+    真实 SSE MCP 调用。
+    窗口3 的 MCP Servers 需实现 SSE endpoint，接收 JSON-RPC 2.0 请求：
+    {"jsonrpc": "2.0", "method": "tools/call", "params": {"name": tool_name, "arguments": arguments}, "id": 1}
+    """
+    async with httpx.AsyncClient(timeout=30) as client:
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {"name": tool_name, "arguments": arguments},
+            "id": 1,
+        }
+        r = await client.post(server_url, json=payload)
+        r.raise_for_status()
+        resp = r.json()
+        if resp.get("error"):
+            raise RuntimeError(f"MCP error: {resp['error']}")
+        result = resp.get("result", {})
+        logger.info("[real MCP] tool=%s status=%s", tool_name, result.get("status", "ok"))
+        return {
+            "status": "ok",
+            "result": result.get("content", ""),
+            "file_url": result.get("file_url"),
+            "raw": result,
+        }

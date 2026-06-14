@@ -24,6 +24,15 @@ MEM0_BASE_URL: str = os.getenv("MEM0_BASE_URL", "http://localhost:8082")
 RAG_BASE_URL: str = os.getenv("RAG_BASE_URL", "http://localhost:5001")
 CHANNEL_BASE_URL: str = os.getenv("CHANNEL_BASE_URL", "http://localhost:8080")
 
+# ── MCP Servers（窗口3 提供）──────────────────────────────────────────
+# 格式：MCP_SERVER_<NAME>_URL=http://localhost:PORT/sse
+MCP_SERVERS = {
+    "office-word": os.getenv("MCP_SERVER_OFFICE_WORD_URL", "http://localhost:9001/sse"),
+    "presenton":   os.getenv("MCP_SERVER_PRESENTON_URL", "http://localhost:9002/sse"),
+    "paddleocr":   os.getenv("MCP_SERVER_PADDLEOCR_URL", "http://localhost:9003/sse"),
+    "filesystem":  os.getenv("MCP_SERVER_FILESYSTEM_URL", None),
+}
+
 # ── Mock 开关（设为 "true" 使用真实服务）────────────────────────────
 USE_REAL_MEM0: bool = _bool("USE_REAL_MEM0")
 USE_REAL_RAG: bool = _bool("USE_REAL_RAG")
