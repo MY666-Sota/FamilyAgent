@@ -1,4 +1,297 @@
-# mcp-servers / tools（窗口3：能力工具）
+# MCP 工具层（窗口3）
 
-负责 MCP 工具层：PPT/Word/OCR 等 MCP server。
-详见根目录 INTERFACE_CONTRACT.md。
+负责将能力组件封装为 MCP 协议工具，供编排核心（窗口1）调用。
+详见根目录 INTERFACE_CONTRACT.md 接口二。
+
+## 架构概览
+
+```
+编排核心（窗口1）
+    ↓ MCP 协议
+MCP 工具层（窗口3）
+    ├── office-word-mcp    (9001 SSE)  → Office-Word-MCP-Server 代理
+    ├── presenton-mcp      (9002 SSE)  → Presenton HTTP API 封装
+    ├── paddleocr-mcp      (9003 SSE)  → PaddleOCR-VL HTTP 桥接
+    └── filesystem-mcp     (stdio)     → 本地文件读写（限定 shared/outputs/）
+    ↓ 文件落地
+File Server (8090) → http://localhost:8090/files/{name}
+    ↓ 静态文件服务
+shared/outputs/
+```
+
+## 工具状态表
+
+| MCP Server | 端口 | 传输 | 工具数 | 上游服务 | 状态 | 测试日期 |
+|-----------|------|------|--------|----------|------|----------|
+| office-word-mcp | 9001 | SSE | 4 | Office-Word-MCP-Server (9011) | ⚠️ 待上游 | — |
+| presenton-mcp | 9002 | SSE | 3 | Presenton (7860) | 🔶 待实测 | — |
+| paddleocr-mcp | 9003 | SSE | 2 | PaddleOCR-VL (8868) | 🔶 待实测 | — |
+| filesystem-mcp | — | stdio | 5 | 本地文件系统 | 🔶 待实测 | — |
+| file-server | 8090 | HTTP | — | — | 🔶 待实测 | — |
+
+**状态说明**：
+- ✅ **已实测**：功能完整，与窗口2联通
+- 🔶 **待实测**：代码完成，需启动窗口2服务测试
+- ⚠️ **待上游**：依赖的服务尚未部署（需窗口2完成）
+- ❌ **已阻断**：遇到阻塞性问题
+
+## 快速开始
+
+### 1. 安装依赖
+```bash
+pip install -r mcp-servers/requirements.txt
+```
+
+### 2. 启动窗口2服务（在其他终端）
+```bash
+cd ../infra
+docker-compose up -d paddleocr presenton
+```
+
+### 3. 启动 MCP 工具层
+```bash
+# 终端 1: file-server
+python tools/file-server/server.py
+
+# 终端 2: presenton-mcp
+python mcp-servers/presenton-mcp/server.py
+
+# 终端 3: paddleocr-mcp
+python mcp-servers/paddleocr-mcp/server.py
+```
+
+或使用一键启动脚本：
+```bash
+bash start_all.sh
+```
+
+### 4. 测试工具连接
+```bash
+# 基础功能测试（只验证工具列表）
+python tools/test/test_mcp.py --quick
+
+# 完整集成测试（验证端到端功能）
+python tools/test/integration_test.py
+```
+
+## 工具详情
+
+### office-word-mcp (端口 9001)
+代理 GongRzhe/Office-Word-MCP-Server，提供 Word 文档操作。
+
+**工具**：
+- `create_document(filename, content, title?, author?)` → 创建 .docx
+- `read_document(filename)` → 读取文档文本
+- `list_documents()` → 列出所有 .docx 文件
+- `append_to_document(filename, content)` → 追加内容
+
+**输出**：
+- 文件保存到 `shared/outputs/`
+- 返回可下载 URL：`http://localhost:8090/files/{filename}`
+
+### presenton-mcp (端口 9002)
+封装 Presenton HTTP API，提供 PPT 生成功能。
+
+**工具**：
+- `generate_ppt(filename, topic, outline, style?, language?)` → 生成 PPT
+- `generate_ppt_from_markdown(filename, markdown, style?)` → Markdown 转 PPT
+- `list_ppts()` → 列出所有 .pptx 文件
+
+**输出**：
+- 文件保存到 `shared/outputs/`
+- 返回可下载 URL 和幻灯片数量
+
+### paddleocr-mcp (端口 9003)
+桥接 PaddleOCR-VL 服务，提供图片 OCR 识别。
+
+**工具**：
+- `ocr_image(image_path?, image_url?, language?, return_layout?)` → 图片 OCR
+- `ocr_image_structured(image_path?, image_url?, subject?)` → 作业图片结构化识别
+
+**输出**：
+- `text`: 全文拼接
+- `lines`: 按行分割的文本
+- `layout`: 布局框（仅 `return_layout=True` 时返回）
+- `questions`: 结构化题目列表（仅 `ocr_image_structured` 返回）
+
+### filesystem-mcp (stdio)
+本地文件读写工具，根路径锁定为 `shared/outputs/`。
+
+**工具**：
+- `list_files(directory?)` → 列出文件
+- `read_file(path)` → 读取文本文件
+- `write_file(path, content, overwrite?)` → 写入文本文件
+- `delete_file(path)` → 删除文件
+- `file_exists(path)` → 检查文件是否存在
+
+**安全特性**：
+- 路径锁定到 `shared/outputs/`
+- 防目录穿越攻击
+- 需显式 `overwrite=True` 覆盖已有文件
+
+### file-server (端口 8090)
+FastAPI 静态文件服务，挂载 `shared/outputs/` 目录。
+
+**端点**：
+- `GET /health` → 健康检查
+- `GET /list` → 列出所有文件
+- `GET /files/{path}` → 下载文件
+
+**安全特性**：
+- 防目录穿越攻击
+- 仅限 GET 请求（写入需通过 MCP 工具）
+
+## MCP 注册表
+
+窗口1 通过读取 `shared/mcp_registry.json` 发现可用的 MCP server：
+
+```json
+[
+  {
+    "name": "office-word",
+    "transport": "sse",
+    "url": "http://localhost:9001/sse",
+    "description": "Word 文档生成与编辑",
+    "tools": ["create_document", "read_document", "list_documents", "append_to_document"]
+  },
+  {
+    "name": "presenton",
+    "transport": "sse",
+    "url": "http://localhost:9002/sse",
+    "description": "PPT 生成",
+    "tools": ["generate_ppt", "generate_ppt_from_markdown", "list_ppts"]
+  },
+  {
+    "name": "paddleocr",
+    "transport": "sse",
+    "url": "http://localhost:9003/sse",
+    "description": "图片 OCR 识别",
+    "tools": ["ocr_image", "ocr_image_structured"]
+  },
+  {
+    "name": "filesystem",
+    "transport": "stdio",
+    "command": "python tools/filesystem-mcp/server.py",
+    "description": "本地文件读写",
+    "tools": ["list_files", "read_file", "write_file", "delete_file", "file_exists"]
+  }
+]
+```
+
+## 工具 Schema
+
+每个工具的输入/输出 JSON Schema 定义在 `shared/tool_schemas/` 目录：
+
+- `office-word.json` — Word 文档工具
+- `presenton.json` — PPT 生成工具
+- `paddleocr.json` — OCR 识别工具
+- `filesystem.json` — 文件系统工具
+
+窗口1 可参考这些 schema 进行类型检查和参数校验。
+
+## 端口配置与窗口2对齐
+
+| 服务 | 窗口2 端口 | 环境变量 | 状态 |
+|------|-----------|---------|------|
+| PaddleOCR | 8868 | `PADDLEOCR_BASE` | ✅ 一致 |
+| Presenton | 7860 | `PRESENTON_BASE` | ✅ 已修正 |
+| Office-Word-MCP-Server | 9011 | `OFFICE_WORD_MCP_BASE` | ⚠️ 窗口2待部署 |
+| File Server | 8090 | `FILE_SERVER_PORT` | ✅ 独立服务 |
+
+**修正记录**：
+- 2026-06-14: presenton-mcp 端口从 7001 改为 7860（与 docker-compose 一致）
+
+## 测试
+
+### 基础功能测试
+```bash
+python tools/test/test_mcp.py --quick
+```
+验证各 MCP server 能启动，工具列表与 schema 一致。
+
+### 完整集成测试
+```bash
+python tools/test/integration_test.py
+```
+验证与窗口2服务的联通性、端到端功能、文件落地和 URL 可访问性。
+
+**测试用例**：
+- File Server 健康检查和文件列表
+- PaddleOCR-VL 图片识别（测试图片自动生成）
+- Presenton PPT 生成
+- 文件落地到 `shared/outputs/`
+- 文件 URL 可访问
+
+**详细测试计划**：见 `tools/test/TEST_PLAN.md`
+
+## 常见问题
+
+### 1. MCP server 启动失败
+检查端口是否被占用：
+```bash
+netstat -ano | findstr <port>
+```
+
+### 2. 无法连接窗口2服务
+确保窗口2服务已启动：
+```bash
+cd ../infra
+docker-compose ps
+```
+
+### 3. 文件未落到 shared/outputs/
+检查 `shared/outputs/` 目录权限和环境变量。
+
+### 4. Office-Word-MCP-Server 连接失败
+该服务由窗口2部署，等待窗口2完成后再测试。
+
+## 开发规范
+
+### 代码风格
+- Python 3.11+
+- 使用 `mcp[cli]` 官方 SDK
+- SSE server 使用 `FastMCP` 类
+- 所有工具都有完整 docstring
+
+### 文件输出
+- 统一保存到 `shared/outputs/`
+- 返回 URL 格式：`http://localhost:8090/files/{name}`
+- 通过 file-server 提供静态文件服务
+
+### 安全考虑
+- filesystem-mcp 根路径锁定到 `shared/outputs/`
+- 防目录穿越攻击
+- 需显式确认才能覆盖已有文件
+
+## 依赖关系
+
+```
+MCP 工具层（本目录）
+    ↓ 依赖
+窗口2（infra/）
+    ├── PaddleOCR-VL (8868)
+    ├── Presenton (7860)
+    └── Office-Word-MCP-Server (9011)
+```
+
+## 更新日志
+
+### 2026-06-14
+- ✅ 完成 MCP 工具层骨架
+- ✅ 修正 Presenton 端口（7001 → 7860）
+- ✅ 添加集成测试脚本
+- ✅ 添加详细测试计划
+- 🔶 待执行集成测试
+- 🔶 待上游部署 Office-Word-MCP-Server
+
+### 2026-06-13
+- ✅ 初始提交（commit a768fee）
+- ✅ 实现 4 个 MCP server
+- ✅ 实现 file-server
+- ✅ 完成 tool_schemas
+- ✅ 完成 mcp_registry.json
+
+## 贡献
+
+本目录由窗口3负责，仅修改 `mcp-servers/`、`tools/` 和 `shared/tool_schemas/`。
+跨目录修改需先在 INTERFACE_CONTRACT.md 登记。

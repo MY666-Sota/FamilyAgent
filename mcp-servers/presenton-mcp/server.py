@@ -13,7 +13,8 @@ OUTPUTS_DIR = Path(__file__).parent.parent.parent / "shared" / "outputs"
 OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
 FILE_SERVER_BASE = os.getenv("FILE_SERVER_BASE", "http://localhost:8090/files")
-PRESENTON_BASE = os.getenv("PRESENTON_BASE", "http://localhost:7001")
+# Presenton 容器端口（见 docker-compose.yml presenton 服务，映射 7860:7860）
+PRESENTON_BASE = os.getenv("PRESENTON_BASE", "http://localhost:7860")
 
 mcp = FastMCP("presenton", port=9002)
 
