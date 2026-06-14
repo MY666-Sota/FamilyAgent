@@ -43,6 +43,12 @@ services:
       - ollama_data:/root/.ollama
     ports:
       - "11434:11434"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     # 有 GPU 时取消下面两行注释
     # deploy:
     #   resources:
@@ -63,6 +69,12 @@ services:
       - xinference_data:/root/.xinference
     ports:
       - "9997:9997"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9997/v1/models"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     depends_on:
       - ollama
 
@@ -85,6 +97,12 @@ services:
       - ./infra/chatgpt-on-wechat/config.json:/app/config.json:ro
     ports:
       - "8079:80"
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     depends_on:
       - redis
 
@@ -102,6 +120,12 @@ services:
       WECHAT_AGENT_ID: ${WECHAT_AGENT_ID}
     ports:
       - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     depends_on:
       - chatgpt-on-wechat
 
@@ -129,6 +153,12 @@ services:
       WEAVIATE_API_KEY: ${WEAVIATE_API_KEY}
     volumes:
       - dify_storage:/app/api/storage
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     depends_on:
       postgres:
         condition: service_healthy
@@ -160,6 +190,12 @@ services:
       WEAVIATE_API_KEY: ${WEAVIATE_API_KEY}
     volumes:
       - dify_storage:/app/api/storage
+    healthcheck:
+      test: ["CMD", "sh", "-c", "pgrep -f 'celery.*worker' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     depends_on:
       - dify-api
 
@@ -170,6 +206,12 @@ services:
     environment:
       CONSOLE_API_URL: ""
       APP_API_URL: ""
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   weaviate:
     image: semitechnologies/weaviate:1.24.6
@@ -183,6 +225,12 @@ services:
       WEAVIATE_API_KEY: ${WEAVIATE_API_KEY}
     volumes:
       - weaviate_data:/var/lib/weaviate
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/.well-known/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # 接口适配器：把 /v1/rag/query 转换为 Dify 知识库 API
   dify-adapter:
@@ -197,6 +245,12 @@ services:
       DIFY_DATASET_ID: ${DIFY_DATASET_ID}
     ports:
       - "5001:5001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     depends_on:
       - dify-api
 
@@ -219,6 +273,12 @@ services:
       LLM_MODEL: ${LLM_MODEL}
     ports:
       - "8082:8082"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     depends_on:
       postgres:
         condition: service_healthy
@@ -236,6 +296,12 @@ services:
       - paddleocr_models:/models
     ports:
       - "8868:8868"
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "8868"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     # 无 GPU 时改用 CPU 镜像：paddlepaddle/paddle:2.6.1
 
   # PPT 生成（Presenton，供 MCP 工具调用，见 shared/mcp_registry.json port 9002）
@@ -251,6 +317,12 @@ services:
       - ./shared/outputs:/app/outputs
     ports:
       - "7860:7860"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   # ── 内网穿透：Cloudflare Tunnel ────────────────────────────────────
   # 仅在需要外网访问时启动，TOKEN 留空则此服务不启动
@@ -273,6 +345,12 @@ services:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     ports:
       - "80:80"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     depends_on:
       - chatgpt-on-wechat
       - wechat-reply-server
