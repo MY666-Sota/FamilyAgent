@@ -20,6 +20,11 @@ import sys
 import base64
 from pathlib import Path
 
+# Windows 控制台默认 GBK，强制 stdout/stderr 用 UTF-8，避免 ✓/✗ 等字符报错
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
 import httpx
 from mcp import ClientSession
 from mcp.client.sse import sse_client

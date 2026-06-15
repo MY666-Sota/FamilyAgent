@@ -21,19 +21,49 @@ shared/outputs/
 
 ## 工具状态表
 
+> 最近实测：2026-06-15（本地组件全部通过；上游依赖服务待窗口2 Docker 部署后联调）
+
 | MCP Server | 端口 | 传输 | 工具数 | 上游服务 | 状态 | 测试日期 |
 |-----------|------|------|--------|----------|------|----------|
-| office-word-mcp | 9001 | SSE | 4 | Office-Word-MCP-Server (9011) | ⚠️ 待上游 | — |
-| presenton-mcp | 9002 | SSE | 3 | Presenton (7860) | 🔶 待实测 | — |
-| paddleocr-mcp | 9003 | SSE | 2 | PaddleOCR-VL (8868) | 🔶 待实测 | — |
-| filesystem-mcp | — | stdio | 5 | 本地文件系统 | 🔶 待实测 | — |
-| file-server | 8090 | HTTP | — | — | 🔶 待实测 | — |
+| office-word-mcp | 9001 | SSE | 4 | Office-Word-MCP-Server (9011) | 🟡 骨架就绪/待上游 | 2026-06-15 |
+| presenton-mcp | 9002 | SSE | 3 | Presenton (7860) | 🟡 骨架就绪/待上游 | 2026-06-15 |
+| paddleocr-mcp | 9003 | SSE | 2 | PaddleOCR-VL (8868) | 🟡 骨架就绪/待上游 | 2026-06-15 |
+| filesystem-mcp | — | stdio | 5 | 本地文件系统 | ✅ 已实测 | 2026-06-15 |
+| file-server | 8090 | HTTP | — | — | ✅ 已实测 | 2026-06-15 |
 
 **状态说明**：
-- ✅ **已实测**：功能完整，与窗口2联通
-- 🔶 **待实测**：代码完成，需启动窗口2服务测试
-- ⚠️ **待上游**：依赖的服务尚未部署（需窗口2完成）
+- ✅ **已实测**：功能完整，端到端验证通过（含异常路径）
+- 🟡 **骨架就绪/待上游**：MCP 层启动正常、工具列表与 schema 一致、能连接调用、上游错误能优雅返回；真实功能需窗口2 部署上游服务后联调
+- ⚠️ **待上游**：依赖的服务尚未部署
 - ❌ **已阻断**：遇到阻塞性问题
+
+### 实测结论（2026-06-15）
+
+**✅ 已通过（本地，无上游依赖）**
+
+| 验证项 | 结果 |
+|--------|------|
+| 5 个组件工具列表与 `mcp_registry.json` 一致 | 14 个工具全部匹配，无缺失/多余 |
+| 只读 smoke call（list_documents / list_ppts / list_files / file_exists） | 全部成功 |
+| filesystem-mcp 读写删闭环（含中文、覆盖保护、路径越界防护） | 11/11 通过 |
+| file-server 下载闭环（写入→列表→HTTP 下载→内容校验→目录穿越防护） | 全部通过 |
+| 文件 URL 格式 `http://localhost:8090/files/{name}` | 符合契约 §2.2 |
+
+**🟡 待上游联调（依赖窗口2 Docker 服务）**
+
+| MCP Server | 上游服务 | 阻塞原因 | 已验证 |
+|-----------|----------|----------|--------|
+| paddleocr-mcp | PaddleOCR-VL (8868) | Docker 未运行，8868 无监听 | 工具可调用，上游连不上时优雅返回 `isError=True` |
+| presenton-mcp | Presenton (7860) | Docker 未运行，7860 无监听 | 同上 |
+| office-word-mcp | Office-Word-MCP-Server (9011) | 窗口2 尚未部署此服务 | 工具列表/schema 就绪 |
+
+**联调前置条件**：窗口2 执行 `docker-compose up -d paddleocr presenton`，并补充部署 Office-Word-MCP-Server（9011）。届时运行 `python tools/test/integration_test.py` 完成端到端验证。
+
+### 本轮修复的问题
+
+1. **测试脚本在 Windows 控制台崩溃**：`✓`/`✗` 等 Unicode 字符在 GBK 控制台报 `UnicodeEncodeError`。已在测试脚本入口强制 `stdout/stderr` 为 UTF-8。
+2. **file-server 死代码**：`StaticFiles` 挂载与自定义 `/files/{path}` 路由路径冲突，后者永不执行。已删除死代码，统一由 `StaticFiles` 处理下载（自带 Range 请求与目录穿越防护）。
+3. **httpx 走系统代理导致 localhost 调用失败**（联调关键）：httpx 默认 `trust_env=True` 会读取 Windows 系统代理，把 `localhost` 上游请求转给代理，导致超时/502。已为全部 6 处上游调用加 `trust_env=False`，确保本地服务间直连。
 
 ## 快速开始
 
@@ -275,6 +305,14 @@ MCP 工具层（本目录）
 ```
 
 ## 更新日志
+
+### 2026-06-15
+- ✅ 本地组件实测全部通过（filesystem-mcp 11/11、file-server 下载闭环、5 组件工具列表一致）
+- 🐛 修复测试脚本在 Windows GBK 控制台的 `UnicodeEncodeError`（强制 UTF-8 输出）
+- 🐛 删除 file-server 死代码（`StaticFiles` 与自定义路由冲突），统一由 `StaticFiles` 处理下载
+- 🐛 修复 httpx 走系统代理导致 localhost 上游调用失败（6 处加 `trust_env=False`，联调关键）
+- ➕ 新增 `tools/test/test_filesystem.py` 读写删闭环测试
+- 🟡 上游三项（PaddleOCR/Presenton/Office-Word）确认阻塞，待窗口2 Docker 部署后联调
 
 ### 2026-06-14
 - ✅ 完成 MCP 工具层骨架

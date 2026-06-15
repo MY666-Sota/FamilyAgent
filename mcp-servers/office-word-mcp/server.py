@@ -48,7 +48,8 @@ async def create_document(
     if not filename.endswith(".docx"):
         filename += ".docx"
 
-    async with httpx.AsyncClient(timeout=60) as client:
+    # trust_env=False：本地服务间调用不走系统代理，避免 localhost 被代理拦截
+    async with httpx.AsyncClient(timeout=60, trust_env=False) as client:
         resp = await client.post(
             f"{WORD_MCP_BASE}/create",
             json={"filename": filename, "content": content, "title": title, "author": author},
@@ -76,7 +77,7 @@ async def read_document(filename: str) -> dict:
     Returns:
         {"content": str, "filename": str}
     """
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=30, trust_env=False) as client:
         resp = await client.post(
             f"{WORD_MCP_BASE}/read",
             json={"filename": filename},
@@ -113,7 +114,7 @@ async def append_to_document(filename: str, content: str) -> dict:
     Returns:
         {"file_url": str, "filename": str}
     """
-    async with httpx.AsyncClient(timeout=60) as client:
+    async with httpx.AsyncClient(timeout=60, trust_env=False) as client:
         resp = await client.post(
             f"{WORD_MCP_BASE}/append",
             json={"filename": filename, "content": content},

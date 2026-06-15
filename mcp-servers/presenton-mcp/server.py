@@ -56,7 +56,7 @@ async def generate_ppt(
         "output_filename": filename,
     }
 
-    async with httpx.AsyncClient(timeout=120) as client:
+    async with httpx.AsyncClient(timeout=120, trust_env=False) as client:
         resp = await client.post(f"{PRESENTON_BASE}/api/generate", json=payload)
         resp.raise_for_status()
         data = resp.json()
@@ -100,7 +100,7 @@ async def generate_ppt_from_markdown(
 
     payload = {"markdown": markdown, "style": style, "output_filename": filename}
 
-    async with httpx.AsyncClient(timeout=120) as client:
+    async with httpx.AsyncClient(timeout=120, trust_env=False) as client:
         resp = await client.post(f"{PRESENTON_BASE}/api/generate/markdown", json=payload)
         resp.raise_for_status()
         data = resp.json()

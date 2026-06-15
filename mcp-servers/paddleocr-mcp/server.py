@@ -54,7 +54,8 @@ async def ocr_image(
     else:
         raise ValueError("必须提供 image_path 或 image_url 之一")
 
-    async with httpx.AsyncClient(timeout=60) as client:
+    # trust_env=False：本地服务间调用不走系统代理，避免 localhost 被代理拦截
+    async with httpx.AsyncClient(timeout=60, trust_env=False) as client:
         resp = await client.post(f"{PADDLEOCR_BASE}/ocr", json=payload)
         resp.raise_for_status()
         data = resp.json()
