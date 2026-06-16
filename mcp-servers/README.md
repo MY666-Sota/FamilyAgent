@@ -310,6 +310,8 @@ MCP 工具层（本目录）
     └── Office-Word-MCP-Server (9011)
 ```
 
+> **上游本地部署调研见 [UPSTREAM_DEPLOY.md](UPSTREAM_DEPLOY.md)**：三个上游的轻量部署方式、镜像大小、能否绕开大镜像，以及**现有 MCP 代码与真实上游 API 的三处不一致**（presenton 端点/字段、office-word 传输形态、paddleocr CPU 可行性）——联调前必读。
+
 ## 更新日志
 
 ### 2026-06-16
