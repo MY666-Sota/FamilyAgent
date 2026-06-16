@@ -82,20 +82,23 @@ docker-compose up -d paddleocr presenton
 ```
 
 ### 3. 启动 MCP 工具层
+
+**推荐：一键启动全部 4 个服务（常驻，供窗口1 联调）**
 ```bash
-# 终端 1: file-server
-python tools/file-server/server.py
-
-# 终端 2: presenton-mcp
-python mcp-servers/presenton-mcp/server.py
-
-# 终端 3: paddleocr-mcp
-python mcp-servers/paddleocr-mcp/server.py
+bash tools/start_mcp_servers.sh           # 启动全部（已在跑的自动跳过）
+bash tools/start_mcp_servers.sh status    # 查看端口监听状态
+bash tools/start_mcp_servers.sh stop      # 停止全部
+bash tools/start_mcp_servers.sh restart   # 重启
 ```
+脚本自动设置 `NO_PROXY`（绕开系统代理）、等待服务就绪并打印端口状态。
+日志写到 `.runlogs/`（已 gitignore）。
 
-或使用一键启动脚本：
+或手动逐个启动（调试单个 server 时）：
 ```bash
-bash start_all.sh
+python tools/file-server/server.py             # 8090
+python mcp-servers/office-word-mcp/server.py   # 9001
+python mcp-servers/presenton-mcp/server.py     # 9002
+python mcp-servers/paddleocr-mcp/server.py     # 9003
 ```
 
 ### 4. 测试工具连接
@@ -313,6 +316,9 @@ MCP 工具层（本目录）
 - ✅ 4 个 server 全部启动并验证端口监听（file-server 8090 / office-word 9001 / presenton 9002 / paddleocr 9003）
 - ✅ 三个 SSE server `/sse` 端点握手 + 工具列表实测通过（office-word 4 / presenton 3 / paddleocr 2）
 - ✅ file-server 下载闭环复测通过（health/list/下载/内容校验/目录穿越防护/404）
+- ✅ 契约一致性校验：4 个 server 的工具名、参数 schema 与 `shared/tool_schemas/` 及 INTERFACE_CONTRACT §2 完全一致（SSE 路径 `/sse`、URL、传输方式均对齐，无出入）
+- ✅ curl 实测：3 个 `/sse` 返回标准 `event: endpoint` 握手帧，`/files/{name}` 下载正常、穿越/不存在均 404
+- ➕ 新增一键启动脚本 `tools/start_mcp_servers.sh`（start/stop/status/restart，自动设 NO_PROXY + 就绪等待 + 端口状态打印），供窗口1 联调复用
 - 🐛 修复 test_mcp.py 自身被系统代理拦截（顶部设 `NO_PROXY` + file-server 检查加 `trust_env=False`），现在无需手动环境变量即可一键跑通
 - 📝 状态表三个 SSE server 从「🟡 骨架就绪」升级为「✅ SSE 已实测 / ⚠️ 上游待部署」
 
