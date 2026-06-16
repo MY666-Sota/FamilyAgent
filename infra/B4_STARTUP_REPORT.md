@@ -71,6 +71,52 @@ Dify 知识库 dataset 尚未初始化，检索端点不存在。
 
 ---
 
+## 二之二、Dify 控制台访问（B4-2 补做）
+
+### 问题
+
+B4 留下的 502 要靠人工进 Dify 控制台建知识库才能消除，但控制台**此前打不开**：
+dify-web 的 3000 端口未映射到主机、`CONSOLE_API_URL`/`APP_API_URL` 为空、nginx 未启动，
+三者任一不解决浏览器都进不去。
+
+### 最终方案：方案A（直连暴露）
+
+给 dify-web 加 `3000:3000` 端口映射，并把控制台前端的 API 地址指向后端 dify-api。
+
+**关键陷阱**：主机 `5001` 端口被 **dify-adapter**（RAG 契约接口，orchestrator 的
+`RAG_BASE_URL` 与 `INTERFACE_CONTRACT` 都硬编码指向它）占用，**不能复用**。
+因此把 dify-api 控制台后端单独映射到主机 **5002**，dify-web 指向 5002。
+
+改动（`docker-compose.yml`）：
+
+| 服务 | 改动 |
+|------|------|
+| dify-web | 加 `ports: ["3000:3000"]`；`CONSOLE_API_URL`/`APP_API_URL` 设为 `http://localhost:5002` |
+| dify-api | 加 `ports: ["5002:5001"]`（5001 已被 adapter 占，错开到 5002） |
+
+端口最终分配：`3000` 控制台前端 ｜ `5001` dify-adapter（RAG 契约）｜ `5002` dify-api 控制台后端。
+
+### 确切访问网址与首次初始化步骤
+
+**控制台网址**：http://localhost:3000
+
+首次初始化（一次性人工操作）：
+
+1. 浏览器打开 **http://localhost:3000/install**，设置管理员账号（邮箱+密码）并登录
+2. 顶部进入「知识库」→「创建知识库」，建一个空知识库（可先不传文档）
+3. 知识库内进入「API 访问」（或「设置 → API Keys」）→ 创建 API Key →
+   复制密钥，填入 `.env` 的 `DIFY_API_KEY`
+4. 在知识库 URL 或详情页复制 **dataset ID**（形如 `xxxxxxxx-xxxx-...`），
+   填入 `.env` 的 `DIFY_DATASET_ID`
+5. 重启 dify-adapter 让新 `.env` 生效：`docker compose up -d dify-adapter`
+6. 复测：`POST http://localhost:5001/v1/rag/query`（带 `user_id`/`query`/`top_k`）
+   应不再 502，返回检索结果
+
+> 备注：若控制台登录后报 API 连接错误，确认浏览器能直接打开
+> **http://localhost:5002/health**（应返回健康），说明 dify-api 后端已暴露到位。
+
+---
+
 ## 三、xinference 巨型镜像的坑与最终方案（方案B）
 
 ### 问题
