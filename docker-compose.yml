@@ -39,6 +39,11 @@ services:
   ollama:
     image: ollama/ollama:latest
     restart: unless-stopped
+    # 本项目 LLM 走 DeepSeek 云端 API（见 .env OPENAI_API_BASE），
+    # 本地模型托管默认用不上。设为可选 profile，避免每次 up 都尝试拉巨型镜像。
+    # 需要本地模型时：docker compose --profile optional up -d ollama
+    profiles:
+      - optional
     volumes:
       - ollama_data:/root/.ollama
     ports:
@@ -59,7 +64,9 @@ services:
     #           capabilities: [gpu]
 
   xinference:
-    image: xprobe/xinference:latest
+    # CPU 版镜像（3.3GB 压缩，vs GPU 版 latest 的 12GB）。
+    # 无 GPU 环境用这个；有 GPU 时改回 xprobe/xinference:latest 并启用 deploy.resources。
+    image: xprobe/xinference:latest-cpu
     restart: unless-stopped
     command: >
       xinference-local
@@ -75,8 +82,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
-    depends_on:
-      - ollama
 
   # ── 接入层：企业微信入口 ────────────────────────────────────────────
   # 消息接收：自定义构建（官方镜像 + orchestrator_forwarder 插件 baked in）
@@ -121,7 +126,7 @@ services:
     ports:
       - "8080:8080"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8080/healthz',timeout=5).status==200 else 1)"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -136,6 +141,9 @@ services:
     env_file: .env
     environment:
       MODE: api
+      # dify 镜像内进程默认 HOME=/home/dify 但该目录对运行用户不可写，
+      # 导致日志刷 Permission denied: '/home/dify'。指到可写的 /app 消除警告。
+      HOME: /app
       SECRET_KEY: ${DIFY_SECRET_KEY}
       DB_USERNAME: ${POSTGRES_USER}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
@@ -173,6 +181,8 @@ services:
     env_file: .env
     environment:
       MODE: worker
+      # 同 dify-api：指 HOME 到可写目录，消除 Permission denied: '/home/dify'
+      HOME: /app
       SECRET_KEY: ${DIFY_SECRET_KEY}
       DB_USERNAME: ${POSTGRES_USER}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
@@ -226,7 +236,7 @@ services:
     volumes:
       - weaviate_data:/var/lib/weaviate
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/.well-known/ready"]
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080/v1/.well-known/ready"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -246,7 +256,7 @@ services:
     ports:
       - "5001:5001"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5001/healthz"]
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:5001/healthz',timeout=5).status==200 else 1)"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -269,12 +279,16 @@ services:
       OPENAI_API_BASE: ${OPENAI_API_BASE}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL}
-      EMBEDDING_BASE_URL: http://xinference:9997/v1
+      # 默认指向本地 xinference；走云端 embedding（硅基流动等）时在 .env 覆盖
+      # EMBEDDING_BASE_URL / EMBEDDING_API_KEY / EMBEDDING_DIMS 三者即可，无需起 xinference。
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-http://xinference:9997/v1}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-xinference}
+      EMBEDDING_DIMS: ${EMBEDDING_DIMS:-1536}
       LLM_MODEL: ${LLM_MODEL}
     ports:
       - "8082:8082"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8082/healthz"]
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8082/healthz',timeout=5).status==200 else 1)"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -346,7 +360,7 @@ services:
     ports:
       - "80:80"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/healthz"]
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost/healthz"]
       interval: 30s
       timeout: 10s
       retries: 3
