@@ -14,8 +14,15 @@ MCP 工具层自测脚本 — 用 MCP Python SDK 逐个连接并验证工具列�
 import argparse
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
+
+# 本地服务调用一律绕开系统代理：Windows 系统代理会拦截 localhost 请求，
+# 导致 SSE 握手 / file-server 健康检查误报 502。在导入 httpx 前设好 NO_PROXY，
+# 使 SSE 客户端（底层同样用 httpx）也生效。
+os.environ.setdefault("NO_PROXY", "localhost,127.0.0.1")
+os.environ.setdefault("no_proxy", "localhost,127.0.0.1")
 
 # Windows 控制台默认 GBK，强制 stdout/stderr 用 UTF-8，避免 ✓/✗ 等字符报错
 if hasattr(sys.stdout, "reconfigure"):
@@ -143,7 +150,9 @@ async def test_file_server() -> bool:
     """验证 file-server (8090) 的 /health 接口。"""
     print("\n[file-server] HTTP → http://localhost:8090")
     try:
-        async with httpx.AsyncClient(timeout=5) as client:
+        # trust_env=False：与各 server 一致，本地服务调用不走系统代理，
+        # 否则 localhost 请求会被 Windows 系统代理拦截，误报 502。
+        async with httpx.AsyncClient(timeout=5, trust_env=False) as client:
             resp = await client.get("http://localhost:8090/health")
             resp.raise_for_status()
             data = resp.json()

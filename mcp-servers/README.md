@@ -21,41 +21,43 @@ shared/outputs/
 
 ## 工具状态表
 
-> 最近实测：2026-06-15（本地组件全部通过；上游依赖服务待窗口2 Docker 部署后联调）
+> 最近实测：2026-06-16（4 个 server 全部启动并通过 SSE 握手/工具列表校验；上游真实功能待窗口2 Docker 部署后联调）
 
 | MCP Server | 端口 | 传输 | 工具数 | 上游服务 | 状态 | 测试日期 |
 |-----------|------|------|--------|----------|------|----------|
-| office-word-mcp | 9001 | SSE | 4 | Office-Word-MCP-Server (9011) | 🟡 骨架就绪/待上游 | 2026-06-15 |
-| presenton-mcp | 9002 | SSE | 3 | Presenton (7860) | 🟡 骨架就绪/待上游 | 2026-06-15 |
-| paddleocr-mcp | 9003 | SSE | 2 | PaddleOCR-VL (8868) | 🟡 骨架就绪/待上游 | 2026-06-15 |
-| filesystem-mcp | — | stdio | 5 | 本地文件系统 | ✅ 已实测 | 2026-06-15 |
-| file-server | 8090 | HTTP | — | — | ✅ 已实测 | 2026-06-15 |
+| office-word-mcp | 9001 | SSE | 4 | Office-Word-MCP-Server (9011) | ✅ SSE 已实测 / ⚠️ 上游待部署 | 2026-06-16 |
+| presenton-mcp | 9002 | SSE | 3 | Presenton (7860) | ✅ SSE 已实测 / ⚠️ 上游待部署 | 2026-06-16 |
+| paddleocr-mcp | 9003 | SSE | 2 | PaddleOCR-VL (8868) | ✅ SSE 已实测 / ⚠️ 上游待部署 | 2026-06-16 |
+| filesystem-mcp | — | stdio | 5 | 本地文件系统 | ✅ 已实测 | 2026-06-16 |
+| file-server | 8090 | HTTP | — | — | ✅ 已实测 | 2026-06-16 |
 
 **状态说明**：
 - ✅ **已实测**：功能完整，端到端验证通过（含异常路径）
-- 🟡 **骨架就绪/待上游**：MCP 层启动正常、工具列表与 schema 一致、能连接调用、上游错误能优雅返回；真实功能需窗口2 部署上游服务后联调
-- ⚠️ **待上游**：依赖的服务尚未部署
+- ✅ **SSE 已实测**：server 启动正常、SSE 握手成功、工具列表与 schema 一致
+- ⚠️ **上游待部署**：真实工具调用依赖的上游服务（窗口2 Docker）尚未部署，待联调
 - ❌ **已阻断**：遇到阻塞性问题
 
-### 实测结论（2026-06-15）
+### 实测结论（2026-06-16）
 
 **✅ 已通过（本地，无上游依赖）**
 
 | 验证项 | 结果 |
 |--------|------|
+| 4 个 server 启动 + 端口监听（8090/9001/9002/9003） | 全部就绪 |
 | 5 个组件工具列表与 `mcp_registry.json` 一致 | 14 个工具全部匹配，无缺失/多余 |
-| 只读 smoke call（list_documents / list_ppts / list_files / file_exists） | 全部成功 |
+| 三个 SSE server `/sse` 端点握手 + 工具列表 | office-word(4)/presenton(3)/paddleocr(2) 全部成功 |
+| filesystem-mcp stdio 握手 + smoke call | 5 工具就绪，`file_exists` 调用成功 |
 | filesystem-mcp 读写删闭环（含中文、覆盖保护、路径越界防护） | 11/11 通过 |
-| file-server 下载闭环（写入→列表→HTTP 下载→内容校验→目录穿越防护） | 全部通过 |
+| file-server 下载闭环（写入→列表→HTTP 下载→内容校验→目录穿越防护→404） | 全部通过 |
 | 文件 URL 格式 `http://localhost:8090/files/{name}` | 符合契约 §2.2 |
 
-**🟡 待上游联调（依赖窗口2 Docker 服务）**
+**⚠️ 上游待部署（依赖窗口2 Docker 服务）**
 
 | MCP Server | 上游服务 | 阻塞原因 | 已验证 |
 |-----------|----------|----------|--------|
-| paddleocr-mcp | PaddleOCR-VL (8868) | Docker 未运行，8868 无监听 | 工具可调用，上游连不上时优雅返回 `isError=True` |
+| paddleocr-mcp | PaddleOCR-VL (8868) | Docker 未运行，8868 无监听 | SSE 握手 + 工具列表就绪；上游连不上时优雅返回 `isError=True` |
 | presenton-mcp | Presenton (7860) | Docker 未运行，7860 无监听 | 同上 |
-| office-word-mcp | Office-Word-MCP-Server (9011) | 窗口2 尚未部署此服务 | 工具列表/schema 就绪 |
+| office-word-mcp | Office-Word-MCP-Server (9011) | 窗口2 尚未部署此服务 | 同上 |
 
 **联调前置条件**：窗口2 执行 `docker-compose up -d paddleocr presenton`，并补充部署 Office-Word-MCP-Server（9011）。届时运行 `python tools/test/integration_test.py` 完成端到端验证。
 
@@ -64,6 +66,7 @@ shared/outputs/
 1. **测试脚本在 Windows 控制台崩溃**：`✓`/`✗` 等 Unicode 字符在 GBK 控制台报 `UnicodeEncodeError`。已在测试脚本入口强制 `stdout/stderr` 为 UTF-8。
 2. **file-server 死代码**：`StaticFiles` 挂载与自定义 `/files/{path}` 路由路径冲突，后者永不执行。已删除死代码，统一由 `StaticFiles` 处理下载（自带 Range 请求与目录穿越防护）。
 3. **httpx 走系统代理导致 localhost 调用失败**（联调关键）：httpx 默认 `trust_env=True` 会读取 Windows 系统代理，把 `localhost` 上游请求转给代理，导致超时/502。已为全部 6 处上游调用加 `trust_env=False`，确保本地服务间直连。
+4. **test_mcp.py 自身也被系统代理拦截**（2026-06-16）：自测脚本的 file-server HTTP 检查与 SSE 客户端底层同样走 httpx，默认读系统代理，导致 file-server 误报 502、SSE 需手动设 `NO_PROXY` 才通。已在脚本顶部 `os.environ.setdefault("NO_PROXY", "localhost,127.0.0.1")`（导入 httpx 前生效，覆盖 SSE 客户端），并给 file-server 检查的 `AsyncClient` 加 `trust_env=False`。现在无需任何环境变量即可一键跑通。
 
 ## 快速开始
 
@@ -305,6 +308,13 @@ MCP 工具层（本目录）
 ```
 
 ## 更新日志
+
+### 2026-06-16
+- ✅ 4 个 server 全部启动并验证端口监听（file-server 8090 / office-word 9001 / presenton 9002 / paddleocr 9003）
+- ✅ 三个 SSE server `/sse` 端点握手 + 工具列表实测通过（office-word 4 / presenton 3 / paddleocr 2）
+- ✅ file-server 下载闭环复测通过（health/list/下载/内容校验/目录穿越防护/404）
+- 🐛 修复 test_mcp.py 自身被系统代理拦截（顶部设 `NO_PROXY` + file-server 检查加 `trust_env=False`），现在无需手动环境变量即可一键跑通
+- 📝 状态表三个 SSE server 从「🟡 骨架就绪」升级为「✅ SSE 已实测 / ⚠️ 上游待部署」
 
 ### 2026-06-15
 - ✅ 本地组件实测全部通过（filesystem-mcp 11/11、file-server 下载闭环、5 组件工具列表一致）
