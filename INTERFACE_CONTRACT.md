@@ -111,3 +111,59 @@ StandardMessage = {
 2. 窗口3 单独验证：MCP 工具能被 MCP Inspector 调用
 3. 窗口1 单独验证：mock 接口下编排流程跑通
 4. 三方合流：企微发指令 → 编排 → 调用工具/知识库 → 回复
+
+---
+
+## A7 联调发现（2026-06-16，窗口1 登记，待相关窗口确认）
+
+> 真实联调（Mem0 8082 / MCP 9001-9003 在线）暴露的契约偏差。窗口1 已在 `orchestrator/`
+> 内做了协议层适配与优雅降级，但**工具名/参数/枚举等契约层差异需窗口2/3 确认**。
+> 在统一前，编排核心对这些调用一律优雅降级到 mock，不会崩溃。
+
+### F1. MCP transport 是标准 SSE，非裸 JSON-RPC POST（已由窗口1 适配）
+- **现象**：§2.2 未明确 transport 细节。实测窗口3 用标准 MCP SSE transport：
+  `GET /sse` 建连 → 服务端回 `endpoint` 事件给出 `/messages/?session_id=xxx` →
+  POST JSON-RPC 到该 endpoint → 结果经 SSE 流回。直接 `POST /sse` 返回 `405`。
+- **处置**：窗口1 已改用官方 `mcp` SDK（`sse_client` + `ClientSession`）完成握手，
+  见 `orchestrator/mcp_client.py`。**无需其他窗口改动**，仅登记澄清协议。
+
+### F2. MCP 工具名与参数与编排核心假设不一致（待窗口3 确认）
+编排核心 `nodes/agents.py` 当前按以下假设构造调用，与窗口3 实际暴露的工具签名不符：
+
+| 用途 | 编排核心当前调用 | 窗口3 实际工具签名（实测） |
+|------|----------------|--------------------------|
+| 做PPT (presenton 9002) | `generate_ppt(topic, user_id)` | `generate_ppt(filename*, topic*, outline[]*, style?, language?)` |
+| Word (office-word 9001) | `generate_document(topic, user_id)` | `create_document(filename*, content*, title?, author?)` |
+| 作业批改 (paddleocr 9003) | `ocr_and_grade(media_url, user_id, grade)` | `ocr_image(image_url, language?)` / `ocr_image_structured(image_url, subject?)` |
+
+- **关键差异**：①工具名不同（`generate_document`→`create_document`，`ocr_and_grade`→`ocr_image*`）；
+  ②`user_id` 不是工具参数（编排核心应自己持有，不传给工具）；
+  ③presenton 需要 `outline` 数组与 `filename`，编排核心需先用 LLM 生成大纲再调；
+  ④office-word 无"按 topic 生成"语义，只接受现成 `content`，需编排核心先产出正文。
+- **建议**：请窗口3 在 `shared/tool_schemas/` 导出各工具 JSON Schema（§2.2 已约定但尚未见文件）。
+  窗口1 据此改造 `agents.py` 的参数构造（属窗口1 目录内工作，待 schema 确认后进行）。
+
+### F3. paddleocr 只做 OCR，不含"批改"语义（待窗口3/产品确认）
+- 编排核心期望 `ocr_and_grade` 直接返回批改结果（对错、错题列表）。实际 9003 只提供
+  `ocr_image`（出文字）与 `ocr_image_structured`（出结构化文字）。**批改逻辑需编排核心
+  侧用 LLM 完成**（OCR 取文字 → LLM 判对错）。请确认这是预期分工。
+
+### F4. Mem0 写入 type 枚举校验严格（待窗口2 确认）
+- §1.2 约定 `type: "mistake"|"profile"|"history"`。实测 8082 **严格校验**：传其他值
+  （如 `preference`）返回 `400 {"detail":"type must be mistake|profile|history"}`。
+- **处置**：编排核心 `memory_post` 需保证只用这三个枚举值。已确认非法值会被优雅降级
+  捕获不崩。登记提醒：OpenAPI schema 只标了 `type: string` 未暴露枚举，建议窗口2 在
+  schema 中补 enum 约束便于对齐。
+
+### F5. Mem0 写入依赖 embedding，当前 401 阻塞（窗口2 已知阻塞）
+- 实测 `POST /v1/memory/{user_id}`（合法 type）返回 `500`，根因是上游 embedding 服务
+  `401 Authentication Fails (api key ****e95d invalid)`——即 xinference/embedding 未就绪或
+  key 未配。**读路径（GET）正常**，新用户返回 `{"profile":{},"mistakes":[],"history":[]}`。
+- **影响**：记忆写入暂不可用。编排核心 `save_memory` 已优雅降级（写失败不阻断主流程），
+  待窗口2 配好 embedding 后写入自动恢复，无需窗口1 改动。
+
+### F6. office-word create_document 上游连接失败（待窗口3 确认）
+- 实测 `create_document` 返回工具级错误 `isError=True: "All connection attempts failed"`，
+  疑似 office-word server 的上游依赖（文件存储/转换）未就绪。`list_documents`/`list_ppts`
+  等只读工具正常。请窗口3 确认 9001 的写入依赖是否已部署。
+

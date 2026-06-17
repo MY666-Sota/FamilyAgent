@@ -32,6 +32,7 @@ async def memory_get(user_id: str) -> dict[str, Any]:
             logger.error("[Mem0] 请求失败，降级 mock: %s", exc)
     logger.debug("[mock] memory_get user_id=%s", user_id)
     return {
+        "_source": "mock",
         "profile": {"name": user_id, "grade": "未知", "preferences": []},
         "mistakes": [],
         "history": [],
@@ -82,6 +83,7 @@ async def rag_query(
             logger.error("[RAG] 请求失败，降级 mock: %s", exc)
     logger.debug("[mock] rag_query user_id=%s query=%r", user_id, query[:40])
     return {
+        "_source": "mock",
         "context": f"[mock RAG] 关于「{query[:30]}」的相关知识暂无真实数据。",
         "sources": [],
     }

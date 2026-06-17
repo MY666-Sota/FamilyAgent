@@ -51,14 +51,48 @@ Mock 模式：所有 USE_REAL_* 默认为 false，服务未就绪时自动降级
 - **A3** (8419862): config.py 集中环境变量、mock→real 切换机制
 - **A4** (597b319): MemorySaver checkpointer + thread_id 隔离 + /v1/message/sync
 - **A5** (c859ad1): HTTP 层测试（TestClient + AsyncClient），25条 pytest 全通过
-- **A6** (当前): 真实依赖联调 — MCP SSE、Mem0、Dify，优雅降级
+- **A6** (fbffb60): 真实依赖联调 — MCP SSE、Mem0、Dify，优雅降级
+- **A7** (当前): 真实联调验证与修复 — 见下方「A7 联调结果」
+
+## A7 联调结果（2026-06-16）
+
+真实服务在线（Mem0 8082、MCP 9001-9003）后逐个打开开关实测。
+
+### 结果矩阵
+
+| 场景 | 依赖服务 | 开关 | 真实联调结果 |
+|------|---------|------|------------|
+| 记忆读取 | Mem0 8082 | USE_REAL_MEM0 | ✅ **真实通过** — GET 200，新用户返回空 profile 结构完整 |
+| 记忆写入 | Mem0 8082 + embedding | USE_REAL_MEM0 | ⛔ **阻塞**（窗口2 embedding 401）→ 优雅降级，主流程不阻断 |
+| MCP 连通 | 9001-9003 SSE | USE_REAL_MCP | ✅ **真实通过** — 标准 SSE transport 握手成功，只读工具调通 |
+| MCP 写文件 | office-word 9001 | USE_REAL_MCP | ⚠️ **工具级报错**（窗口3 上游 conn failed）→ 透传 error，不崩 |
+| 工具名/参数 | 9001-9003 | USE_REAL_MCP | ⚠️ **契约不匹配** → 见 INTERFACE_CONTRACT.md F2/F3，待窗口3 schema |
+| 知识问答 | Dify 5001 | USE_REAL_RAG | ⏸️ **暂缓** — 知识库未初始化、DIFY_DATASET_ID 占位，保持 mock |
+
+### A7 修复的编排核心问题
+
+1. **MCP transport 协议错误**：原 `_sse_call` 直接 `POST /sse` 发裸 JSON-RPC，
+   真实服务是标准 MCP SSE transport（`POST /sse` 返回 405）。改用官方 `mcp` SDK
+   的 `sse_client` + `ClientSession` 完成握手。
+2. **网关错误不降级**：原仅对 `ConnectError` 降级，502/503/504（上游未就绪）
+   会透传 error。改为连接失败/超时/5xx 统一降级 mock，4xx 透传供排查。
+3. **TaskGroup 异常逃逸**：在 `async with` 块内 raise 会被 anyio 包成
+   ExceptionGroup 逃逸顶层。改为块内取回结果、块外解析。
+4. **e2e 降级误判**：mock 返回加 `_source` sentinel，修正空 profile 被误判为
+   失败、降级检测逻辑失效的问题；脚本强制 UTF-8 输出修复 Windows 中文乱码。
+
+新增 `tests/test_mcp_client.py`（7 条）覆盖各降级分支，回归 32/32 通过。
 
 ## e2e 联调
 
 ```bash
-# 启动窗口2/3 服务后，运行联调脚本
-USE_REAL_MCP=true USE_REAL_RAG=true python orchestrator/e2e_integrate.py
+# 启动窗口2/3 服务后，逐个打开开关运行联调脚本
+USE_REAL_MEM0=true python orchestrator/e2e_integrate.py   # 记忆读写
+USE_REAL_MCP=true  python orchestrator/e2e_integrate.py   # MCP 工具
+# 也可在 orchestrator/.env 中配置开关（已 gitignore）
 ```
+
+服务未就绪 / 网关错误 / 超时时自动降级 mock，对应场景显示 [SKIP]，编排核心不崩。
 
 ## 文件结构
 
@@ -78,8 +112,9 @@ orchestrator/
 │   ├── router.py      # route_to_agent / plan_subtasks
 │   └── agents.py      # execute_agents / merge_results
 ├── tests/
-│   ├── test_graph.py  # 16条 graph 层测试
-│   └── test_server.py # 9条 HTTP 层测试
+│   ├── test_graph.py       # 16条 graph 层测试
+│   ├── test_server.py      # 9条 HTTP 层测试
+│   └── test_mcp_client.py  # 7条 MCP 降级测试
 ├── Dockerfile
 ├── .env.example
 └── requirements.txt
@@ -87,7 +122,7 @@ orchestrator/
 
 ## 测试覆盖
 
-- pytest: 25 条测试全通过（16 graph + 9 HTTP）
+- pytest: 32 条测试全通过（16 graph + 9 HTTP + 7 MCP 降级）
 - e2e 联调: 5 场景（做PPT/作业批改/Word文档/知识问答/记忆读取）
 
 ## 约束

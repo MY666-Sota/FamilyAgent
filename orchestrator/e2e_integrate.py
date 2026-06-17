@@ -22,6 +22,11 @@ import time
 import httpx
 from pathlib import Path
 
+# Windows 终端默认 GBK，强制 UTF-8 输出避免中文乱码
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from orchestrator import config
@@ -157,7 +162,7 @@ async def test_rag(scenario):
 
     try:
         r = await rag_query(**scenario["rag_args"])
-        if "[mock RAG]" in r.get("context", ""):
+        if r.get("_source") == "mock":
             record_result(
                 scenario["name"],
                 "skipped",
@@ -197,7 +202,7 @@ async def test_memory(scenario):
 
     try:
         r = await memory_get(**scenario["memory_args"])
-        if "mock" in str(r.get("profile", {})):
+        if r.get("_source") == "mock":
             record_result(
                 scenario["name"],
                 "skipped",
@@ -205,17 +210,20 @@ async def test_memory(scenario):
             )
             return
 
-        if r.get("profile"):
-            record_result(
-                scenario["name"],
-                "passed",
-                f"用户画像={r['profile']}"
+        # 真实 Mem0 已连通。新用户 profile 为空 {} 是正常状态，
+        # 只要返回结构完整（含 profile/mistakes/history 三键）即视为通过。
+        if "profile" in r and "mistakes" in r and "history" in r:
+            profile = r["profile"]
+            detail = (
+                f"用户画像={profile}" if profile
+                else "真实连通（新用户 profile 为空，结构完整）"
             )
+            record_result(scenario["name"], "passed", detail)
         else:
             record_result(
                 scenario["name"],
                 "failed",
-                f"期望返回 profile，但响应中没有: {r}"
+                f"真实响应结构不完整，缺 profile/mistakes/history: {r}"
             )
     except Exception as exc:
         record_result(
