@@ -6,7 +6,7 @@ Mem0 记忆层包装服务
   POST /v1/memory/{user_id}
 """
 import os
-from typing import Any
+from typing import Any, Literal
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from mem0 import Memory
@@ -37,7 +37,9 @@ def _build_mem0_config() -> dict:
             "config": {
                 "model": os.environ.get("EMBEDDING_MODEL", "qwen3-embedding"),
                 "openai_base_url": os.environ.get("EMBEDDING_BASE_URL", "http://xinference:9997/v1"),
-                "api_key": "xinference",  # xinference 不校验 key
+                # 本地 xinference 不校验 key（占位即可）；走云端 API（硅基流动等）时
+                # 用 EMBEDDING_API_KEY 传真实 key。
+                "api_key": os.environ.get("EMBEDDING_API_KEY", "xinference"),
             },
         },
         "vector_store": {
@@ -45,7 +47,10 @@ def _build_mem0_config() -> dict:
             "config": {
                 "dbname": os.environ.get("POSTGRES_DB", "familyagent"),
                 "collection_name": "mem0_vectors",
-                "embedding_model_dims": 1536,
+                # 向量维度必须与 embedding 模型一致：
+                #   qwen3-embedding(xinference) = 1536；BAAI/bge-m3(硅基流动) = 1024。
+                # 切换模型时同步改 EMBEDDING_DIMS，否则 pgvector 维度不匹配会报错。
+                "embedding_model_dims": int(os.environ.get("EMBEDDING_DIMS", "1536")),
                 "host": _pg_host(),
                 "port": 5432,
                 "user": os.environ.get("POSTGRES_USER", "familyagent"),
@@ -69,7 +74,7 @@ def get_memory() -> Memory:
 # ── 请求 / 响应模型 ────────────────────────────────────────────────
 
 class MemoryWriteRequest(BaseModel):
-    type: str   # "mistake" | "profile" | "history"
+    type: Literal["mistake", "profile", "history"]
     data: dict[str, Any]
 
 
@@ -109,9 +114,6 @@ async def read_memory(user_id: str):
 
 @app.post("/v1/memory/{user_id}", status_code=201)
 async def write_memory(user_id: str, req: MemoryWriteRequest):
-    if req.type not in ("mistake", "profile", "history"):
-        raise HTTPException(status_code=400, detail="type must be mistake|profile|history")
-
     mem = get_memory()
     text = _dict_to_text(req.type, req.data)
     try:

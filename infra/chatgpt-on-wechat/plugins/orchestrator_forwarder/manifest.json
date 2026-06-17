@@ -1,0 +1,11 @@
+{
+  "name": "orchestrator_forwarder",
+  "version": "1.0",
+  "desc": "Forward all incoming messages to LangGraph orchestrator at :8081",
+  "author": "FamilyAgent",
+  "path": "plugins/orchestrator_forwarder",
+  "priority": 100,
+  "enabled": true,
+  "desire_visibility": 0,
+  "namecn": "编排层转发"
+}
