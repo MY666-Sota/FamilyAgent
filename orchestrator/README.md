@@ -52,7 +52,34 @@ Mock 模式：所有 USE_REAL_* 默认为 false，服务未就绪时自动降级
 - **A4** (597b319): MemorySaver checkpointer + thread_id 隔离 + /v1/message/sync
 - **A5** (c859ad1): HTTP 层测试（TestClient + AsyncClient），25条 pytest 全通过
 - **A6** (fbffb60): 真实依赖联调 — MCP SSE、Mem0、Dify，优雅降级
-- **A7** (当前): 真实联调验证与修复 — 见下方「A7 联调结果」
+- **A7** (599ab25): 真实联调验证与修复 — MCP SSE 协议、优雅降级加固
+- **A8** (当前): 工具签名改造 — LLM 生成 outline/content，对接真实工具名
+
+## A8 联调结果（2026-06-17）
+
+据 shared/tool_schemas/ 真实签名（从在线 MCP Server 实测取得）改造 agents.py，
+同步更新 e2e 脚本从 agent 层测试（而非直接调 call_tool）。
+
+### 结果矩阵
+
+| 场景 | 依赖服务 | 结果 | 说明 |
+|------|---------|------|------|
+| 记忆读取 | Mem0 8082 | ✅ 通过 | 同 A7 |
+| 记忆写入 | Mem0 8082 + embedding | ⛔ 阻塞（窗口2）| embedding 401，优雅降级，主流程不阻断 |
+| Word文档 | office-word 9001 | ✅ **真实通过** | `create_document` 返回 file_url，LLM 降级走规则内容 |
+| 作业批改 | paddleocr 9003 | ✅ 通过（降级）| OCR 无真实图片走 mock，整体链路 `_homework_agent` 不崩 |
+| 做PPT | presenton 9002 | ⚠️ 上游阻塞（窗口3）| `generate_ppt` "conn failed"，参数构造正确，上游服务依赖未就绪 |
+| 知识问答 | Dify 5001 | ⏸️ 暂缓 | 知识库未初始化，保持 mock |
+
+### A8 改造内容
+
+1. **ppt_agent**：LLM 生成 `filename + outline[]`（降级：规则生成 3 条），
+   调 `presenton/generate_ppt(filename, topic, outline)`，去掉 `user_id`。
+2. **document_agent**：LLM 生成 `filename + title + content`（降级：占位文本），
+   调 `office-word/create_document(filename, content, title)`，去掉 `user_id`。
+3. **homework_agent**：先调 `paddleocr/ocr_image_structured(image_url, subject)` 取文字，
+   再用 LLM 批改（降级：返回 mock 结果）；科目从用户输入/年级自动推断。
+4. **e2e 脚本**：场景改为通过 agent 层调用，增加 `记忆写入` 场景（验证 F5）。
 
 ## A7 联调结果（2026-06-16）
 
@@ -123,7 +150,7 @@ orchestrator/
 ## 测试覆盖
 
 - pytest: 32 条测试全通过（16 graph + 9 HTTP + 7 MCP 降级）
-- e2e 联调: 5 场景（做PPT/作业批改/Word文档/知识问答/记忆读取）
+- e2e 联调: 6 场景（做PPT/作业批改/Word文档/知识问答/记忆读取/记忆写入）
 
 ## 约束
 
