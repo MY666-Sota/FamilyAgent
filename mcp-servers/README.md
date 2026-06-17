@@ -21,11 +21,11 @@ shared/outputs/
 
 ## 工具状态表
 
-> 最近实测：2026-06-16（4 个 server 全部启动并通过 SSE 握手/工具列表校验；上游真实功能待窗口2 Docker 部署后联调）
+> 最近实测：2026-06-17（office-word-mcp F6 修复：改用本地 python-docx，无上游依赖，create/read/append/list 全链路通过）
 
 | MCP Server | 端口 | 传输 | 工具数 | 上游服务 | 状态 | 测试日期 |
 |-----------|------|------|--------|----------|------|----------|
-| office-word-mcp | 9001 | SSE | 4 | Office-Word-MCP-Server (9011) | ✅ SSE 已实测 / ⚠️ 上游待部署 | 2026-06-16 |
+| office-word-mcp | 9001 | SSE | 4 | ~~Office-Word-MCP-Server (9011)~~ 本地 python-docx | ✅ 已实测（无上游依赖） | 2026-06-17 |
 | presenton-mcp | 9002 | SSE | 3 | Presenton (7860) | ✅ SSE 已实测 / ⚠️ 上游待部署 | 2026-06-16 |
 | paddleocr-mcp | 9003 | SSE | 2 | PaddleOCR-VL (8868) | ✅ SSE 已实测 / ⚠️ 上游待部署 | 2026-06-16 |
 | filesystem-mcp | — | stdio | 5 | 本地文件系统 | ✅ 已实测 | 2026-06-16 |
@@ -57,9 +57,9 @@ shared/outputs/
 |-----------|----------|----------|--------|
 | paddleocr-mcp | PaddleOCR-VL (8868) | Docker 未运行，8868 无监听 | SSE 握手 + 工具列表就绪；上游连不上时优雅返回 `isError=True` |
 | presenton-mcp | Presenton (7860) | Docker 未运行，7860 无监听 | 同上 |
-| office-word-mcp | Office-Word-MCP-Server (9011) | 窗口2 尚未部署此服务 | 同上 |
+| ~~office-word-mcp~~ | ~~Office-Word-MCP-Server (9011)~~ | **已消除**：改用本地 python-docx | ✅ 已实测 |
 
-**联调前置条件**：窗口2 执行 `docker-compose up -d paddleocr presenton`，并补充部署 Office-Word-MCP-Server（9011）。届时运行 `python tools/test/integration_test.py` 完成端到端验证。
+**联调前置条件**：窗口2 执行 `docker-compose up -d paddleocr presenton`（office-word 现已无上游依赖）。届时运行 `python tools/test/integration_test.py` 完成端到端验证。
 
 ### 本轮修复的问题
 
@@ -313,6 +313,14 @@ MCP 工具层（本目录）
 > **上游本地部署调研见 [UPSTREAM_DEPLOY.md](UPSTREAM_DEPLOY.md)**：三个上游的轻量部署方式、镜像大小、能否绕开大镜像，以及**现有 MCP 代码与真实上游 API 的三处不一致**（presenton 端点/字段、office-word 传输形态、paddleocr CPU 可行性）——联调前必读。
 
 ## 更新日志
+
+### 2026-06-17
+- 🐛 **F6 修复**：`create_document` 返回"All connection attempts failed"根因是转发到未部署的 9011；改用本地 `python-docx` 直接读写，无外部依赖。create/read/append/list 全链路验证通过（36KB .docx，HTTP 200 下载）
+- 📝 **F2**：确认 `shared/tool_schemas/` 四个 JSON Schema 与 server 签名完全一致，供窗口1 修改 agents.py 用
+- 📝 **F3**：确认 paddleocr 只做文字提取，批改由窗口1 LLM 处理
+- 📝 `INTERFACE_CONTRACT.md` 追加 A7 联调发现节（F2 工具签名对照表、F3 分工确认、F6 根因与修复）
+- ➕ `requirements.txt` 补 `python-docx>=1.1.2`
+- 📊 状态表：office-word-mcp 升级为「✅ 已实测（无上游依赖）」
 
 ### 2026-06-16
 - ✅ 4 个 server 全部启动并验证端口监听（file-server 8090 / office-word 9001 / presenton 9002 / paddleocr 9003）
