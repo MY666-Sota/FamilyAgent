@@ -6,7 +6,7 @@ Mem0 记忆层包装服务
   POST /v1/memory/{user_id}
 """
 import os
-from typing import Any
+from typing import Any, Literal
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from mem0 import Memory
@@ -74,7 +74,7 @@ def get_memory() -> Memory:
 # ── 请求 / 响应模型 ────────────────────────────────────────────────
 
 class MemoryWriteRequest(BaseModel):
-    type: str   # "mistake" | "profile" | "history"
+    type: Literal["mistake", "profile", "history"]
     data: dict[str, Any]
 
 
@@ -114,9 +114,6 @@ async def read_memory(user_id: str):
 
 @app.post("/v1/memory/{user_id}", status_code=201)
 async def write_memory(user_id: str, req: MemoryWriteRequest):
-    if req.type not in ("mistake", "profile", "history"):
-        raise HTTPException(status_code=400, detail="type must be mistake|profile|history")
-
     mem = get_memory()
     text = _dict_to_text(req.type, req.data)
     try:

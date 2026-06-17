@@ -167,36 +167,51 @@ EMBEDDING_DIMS=1024          # bge-m3=1024，qwen3-embedding=1536，务必与模
 
 ### embedding 云端方案落地指引（用户操作步骤）
 
-> ⚠️ 重要区分：项目里有**两个独立的云端服务**，用的是**两个不同的 key**：
-> - **LLM**（对话/记忆摘要）走 **DeepSeek**，用 `OPENAI_API_KEY`（用户已有）。
-> - **Embedding**（向量化）走**独立的云端 embedding 服务**，DeepSeek **不提供** embedding，
->   必须单独注册一个，用 `EMBEDDING_API_KEY`。两者不能混用。
+> **A7 联调更新**：实测 `POST /v1/memory/{user_id}` 返回 500，根因是
+> `401 Authentication Fails (api key ****e95d invalid)` ——
+> `.env` 里 `EMBEDDING_API_KEY` 是占位符，硅基流动 key 未填入。
+> app.py 的读取逻辑本身无 bug（已核查），缺的是真实 key。
 
-推荐用硅基流动（siliconflow），注册送额度、OpenAI 协议兼容、有免费的 `BAAI/bge-m3`。
+> ⚠️ 重要区分：项目里有**两个独立的云端服务**，用的是**两个不同的 key**：
+> - **LLM**（对话/记忆摘要）走 **DeepSeek**，用 `OPENAI_API_KEY`（已有）。
+> - **Embedding**（向量化）走**独立的云端 embedding 服务**，DeepSeek **不提供** embedding，
+>   必须单独注册硅基流动，用 `EMBEDDING_API_KEY`。两者不能混用。
+
+推荐用硅基流动（siliconflow），注册送额度、OpenAI 协议兼容、`BAAI/bge-m3` 免费可用。
 
 **操作步骤**：
 
 1. 打开 **https://siliconflow.cn** 注册账号
 2. 控制台 →「API 密钥」→ 新建密钥，复制（形如 `sk-xxxxxxxx...`）
-3. 编辑主目录 `.env`，确认以下 **3 项匹配**（缺一不可）：
+3. 编辑主目录 `.env`，将以下 **4 项全部设对**（缺一不可）：
    ```bash
-   EMBEDDING_MODEL=BAAI/bge-m3                       # 模型名
-   EMBEDDING_BASE_URL=https://api.siliconflow.cn/v1  # 硅基流动 endpoint
-   EMBEDDING_API_KEY=sk-你复制的硅基流动密钥          # 第2步拿到的 key
-   EMBEDDING_DIMS=1024                                # bge-m3 固定 1024 维
+   EMBEDDING_MODEL=BAAI/bge-m3
+   EMBEDDING_BASE_URL=https://api.siliconflow.cn/v1
+   EMBEDDING_API_KEY=sk-你复制的硅基流动密钥   # ← 这是 F5 报错的根因，必须填真实 key
+   EMBEDDING_DIMS=1024                          # bge-m3 固定 1024 维，不能写 1536
    ```
-   > `EMBEDDING_DIMS` 必须与模型维度一致：`BAAI/bge-m3`=**1024**，`qwen3-embedding`=1536。
-   > 维度与 pgvector collection 不匹配会在写入记忆时报错。
+   > `EMBEDDING_DIMS` 必须与模型维度一致：`BAAI/bge-m3`=**1024**，`qwen3-embedding`=**1536**。
+   > 写错维度会导致 pgvector 维度不匹配，写记忆时报错。
 4. 重启 mem0 让新 `.env` 生效（主目录执行）：
    ```bash
-   docker compose up -d mem0
+   docker compose restart mem0
    ```
-5. 验证：`curl --noproxy localhost http://localhost:8082/healthz` 返回 200，
-   再写一条记忆（`POST /v1/memory/test_user`）不报维度错即成功。
+   > 用 `restart` 而非 `up -d`——容器已存在时 `restart` 重新加载环境变量更快，
+   > 不触发镜像重建。
+5. 验证（全加 `--noproxy localhost` 绕代理）：
+   ```bash
+   # 服务活着
+   curl --noproxy localhost http://localhost:8082/healthz
+   # 写一条记忆，不再 500
+   curl --noproxy localhost -X POST http://localhost:8082/v1/memory/test_user \
+     -H "Content-Type: application/json" \
+     -d '{"type":"history","data":{"action":"smoke test","detail":"embedding ok"}}'
+   # 期望：{"status":"ok"}，不再有 401
+   ```
 
 > 已有 xinference 镜像（GPU/网络允许）想用本地方案时，把上面 4 项改回
 > `EMBEDDING_MODEL=qwen3-embedding` / `EMBEDDING_BASE_URL=http://xinference:9997/v1` /
-> `EMBEDDING_API_KEY=xinference` / `EMBEDDING_DIMS=1536` 即可。
+> `EMBEDDING_API_KEY=xinference` / `EMBEDDING_DIMS=1536`，再 `docker compose restart mem0`。
 
 ---
 
