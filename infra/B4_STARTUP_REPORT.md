@@ -245,7 +245,54 @@ dify 镜像内进程默认 `HOME=/home/dify`，但该目录对运行用户不可
 
 ---
 
-## 五、部署 checklist（下次全新启动）
+## 五之一、Dify 控制台访问验证（B4-2 merge 后实测）
+
+主目录已 merge feat/infra，dify-web 3000 端口已对外暴露。
+
+**实测结果**：`curl --noproxy localhost http://localhost:3000` → `HTTP 307`，
+重定向到登录页——服务正常，浏览器会自动跟随重定向。
+
+**访问方式**：
+
+- 控制台入口：**http://localhost:3000**（浏览器打开，自动跳转登录页）
+- 首次访问走 **http://localhost:3000/install** 建管理员账号
+- dify-api 后端健康检查：**http://localhost:5002/health**（应返回 200）
+
+**阻塞状态**：控制台 HTTP 307 说明前端已就绪，但 `dify-adapter /v1/rag/query`
+仍返回 502——根因是 `.env` 的 `DIFY_API_KEY` / `DIFY_DATASET_ID` 仍为占位符，
+**需用户完成 Dify 初始化**（建账号 → 建知识库 → 创建 API Key → 填入 `.env` → 重启 dify-adapter）
+才能消除 502。详细步骤见《二之二、Dify 控制台访问》节。
+
+---
+
+## 五之二、Presenton 镜像预热结果
+
+**结论：镜像预热成功，使用南京大学 ghcr 镜像源。**
+
+| 项 | 结果 |
+|----|------|
+| ghcr.io 直连 | ❌ EOF 断流（代理对持续大文件必断） |
+| ghcr.nju.edu.cn | ✅ **成功**，耗时约 1 分 46 秒 |
+| 镜像体积（本地解压后） | 3.86 GB（压缩下载约 1.06 GB） |
+| 本地 tag | `ghcr.io/presenton/presenton:latest`（已 retag，compose 可直接引用） |
+
+拉取命令（网络不通时备用）：
+```bash
+docker pull ghcr.nju.edu.cn/presenton/presenton:latest
+docker tag ghcr.nju.edu.cn/presenton/presenton:latest ghcr.io/presenton/presenton:latest
+```
+
+**启动方式**（镜像已预热，主目录执行）：
+```bash
+docker compose --profile presenton up -d presenton
+```
+
+服务就绪后访问 **http://localhost:7860**，复用 `OPENAI_API_KEY` / `OPENAI_API_BASE`（DeepSeek），
+无需额外配置。
+
+---
+
+## 六、部署 checklist（下次全新启动）
 
 1. `cp .env.example .env`，填 `POSTGRES_PASSWORD`/`REDIS_PASSWORD`/`DIFY_SECRET_KEY`/`WEAVIATE_API_KEY`
    （强随机：`openssl rand -hex 16` / `-hex 32`）
