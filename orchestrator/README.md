@@ -53,7 +53,34 @@ Mock 模式：所有 USE_REAL_* 默认为 false，服务未就绪时自动降级
 - **A5** (c859ad1): HTTP 层测试（TestClient + AsyncClient），25条 pytest 全通过
 - **A6** (fbffb60): 真实依赖联调 — MCP SSE、Mem0、Dify，优雅降级
 - **A7** (599ab25): 真实联调验证与修复 — MCP SSE 协议、优雅降级加固
-- **A8** (当前): 工具签名改造 — LLM 生成 outline/content，对接真实工具名
+- **A8** (f82dd8f): 工具签名改造 — LLM 生成 outline/content，对接真实工具名
+- **A9** (当前): 记忆联调收尾 — Mem0 真实读写打通、意图分类接入真实 LLM
+
+## A9 联调结果（2026-06-19）
+
+窗口2 修复 F5：DeepSeek key 换新、mem0 的 pgvector 表重建为 1024 维（bge-m3）后，
+记忆写入阻塞彻底解除。本阶段把记忆读写、意图分类两条真实链路收尾验证通过。
+
+### 结果矩阵
+
+| 场景 | 依赖服务 | 结果 | 说明 |
+|------|---------|------|------|
+| 记忆读取 | Mem0 8082 | ✅ **真实通过** | GET 返回真实用户画像/错题记录 |
+| 记忆写入 | Mem0 8082 + embedding | ✅ **真实通过** | POST 返回 HTTP 201；F5 阻塞解除（1024 维 bge-m3）|
+| 意图分类 | DeepSeek LLM | ✅ **真实通过** | ppt/homework/qa 三类识别 + params 提取均正确 |
+| Word文档 | office-word 9001 | ✅ 真实通过 | `create_document` 返回 file_url（A8 已通）|
+| 作业批改 | paddleocr 9003 | ✅ 通过 | OCR + LLM 判对错（A8 已通）|
+| 做PPT | presenton 9002 | ⚠️ 阻塞 | presenton 后端 7860 未起，工具调用上游报错，优雅降级 |
+| 知识问答 | Dify 5001 | ⚠️ 阻塞 | Dify 知识库未初始化、DIFY_DATASET_ID 占位，保持 mock |
+
+### A9 改动
+
+1. **config.py**：`load_dotenv()` 显式指向 `orchestrator/.env`（`Path(__file__).parent`），
+   修复从仓库根目录运行时读不到 `.env`、开关恒为 false 的问题。
+2. **orchestrator/.env**（本地，未提交）：`USE_REAL_MEM0=true`、填入 DeepSeek `LLM_API_KEY`。
+
+> 注：mem0 在 `http://localhost:8082`，本机配了代理 `127.0.0.1:12334` 会拦截 localhost，
+> curl 测试需加 `--noproxy localhost`（Python httpx 不受影响）。
 
 ## A8 联调结果（2026-06-17）
 
