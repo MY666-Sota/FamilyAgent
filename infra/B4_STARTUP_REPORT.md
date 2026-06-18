@@ -243,6 +243,66 @@ dify 镜像内进程默认 `HOME=/home/dify`，但该目录对运行用户不可
 | mem0 | python-slim | curl | `python urllib` |
 | wechat-reply-server | python-slim | curl | `python urllib` |
 
+### 4. mem0 LLM 参数修正（DeepSeek top_p 400）
+
+mem0 默认给 LLM 传 `top_p=0`，但 DeepSeek 要求 `top_p ∈ (0, 1]`，
+会返回 400。在 `infra/mem0/app.py` 的 llm config 显式加 `top_p=0.9` / `temperature=0.1` 修复。
+
+---
+
+## 四之二、mem0 实测踩坑（记忆层联调暴露）
+
+### 1. OPENAI_API_KEY 被 shell 环境变量覆盖
+
+**现象**：`.env` 里 `OPENAI_API_KEY` 已填正确的 DeepSeek key，但 mem0 容器内
+实际读到的是另一个旧 key，embedding / LLM 调用报 `401 Authentication Fails
+(api key ****xxxx invalid)`，且报错里的 key 尾号和 `.env` 对不上。
+
+**根因**：docker-compose.yml 用 `${OPENAI_API_KEY}` 做变量展开。Docker Compose
+的变量优先级是 **shell 环境变量 > .env 文件**——如果当前 shell 里 `export` 过
+同名的 `OPENAI_API_KEY`（比如之前调试别的项目留下的），compose 展开时会用
+shell 里的旧值覆盖 `.env`，容器拿到的就是错的 key。
+
+**排查**：
+```bash
+# 看 shell 里有没有残留的同名变量
+echo "$OPENAI_API_KEY"          # 非空且不等于 .env 里的值 → 就是它在覆盖
+# 看 compose 实际展开成什么（最直接）
+docker compose config | grep -A1 OPENAI_API_KEY
+```
+
+**解法**：清掉 shell 里的同名变量后重建容器：
+```bash
+unset OPENAI_API_KEY            # bash/zsh
+# PowerShell: Remove-Item Env:\OPENAI_API_KEY
+docker compose up -d --force-recreate mem0
+```
+> 同理适用于 `EMBEDDING_API_KEY`、`POSTGRES_PASSWORD` 等所有 `.env` 里的敏感变量——
+> 怀疑配置没生效时，先 `docker compose config` 看实际展开值，再排查 shell 污染。
+
+### 2. pgvector 维度迁移（切换 embedding 模型后）
+
+**现象**：把 embedding 从 xinference（`qwen3-embedding`，1536 维）切到硅基流动
+（`BAAI/bge-m3`，1024 维）后，写记忆报 `expected 1536 dimensions, not 1024`。
+
+**根因**：`mem0_vectors` 表在首次写入时按当时的 `EMBEDDING_DIMS` 建好了固定维度的
+向量列，pgvector 的向量维度是写死在列类型里的（`vector(1536)`），换模型后新向量维度
+对不上旧表，写入被拒。改 `.env` 的 `EMBEDDING_DIMS` 不会自动迁移已存在的表。
+
+**解法**：切换 embedding 模型时，先删掉旧向量表，mem0 下次写入会按新维度自动重建：
+```bash
+# 一键脚本（带确认，主目录执行）
+bash infra/mem0/reset_vectors.sh
+docker compose restart mem0
+
+# 或手动
+docker exec -i familyagent-postgres-1 psql -U familyagent -d familyagent \
+  -c "DROP TABLE IF EXISTS mem0_vectors;"
+docker compose restart mem0
+```
+> ⚠️ DROP 会清空所有已存记忆向量，不可逆。仅在切换 embedding 模型时操作。
+> 脚本见 [`infra/mem0/reset_vectors.sh`](mem0/reset_vectors.sh)。
+
 ---
 
 ## 五之一、Dify 控制台访问验证（B4-2 merge 后实测）
