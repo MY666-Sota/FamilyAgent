@@ -28,3 +28,4 @@ Thumbs.db
 .idea/
 .vscode/
 .runlogs/
+tools/mock-presenton/_app_data/
