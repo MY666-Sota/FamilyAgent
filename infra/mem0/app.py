@@ -30,6 +30,8 @@ def _build_mem0_config() -> dict:
                 "model": os.environ.get("LLM_MODEL", "deepseek-chat"),
                 "openai_base_url": os.environ.get("OPENAI_API_BASE", "https://api.deepseek.com/v1"),
                 "api_key": os.environ["OPENAI_API_KEY"],
+                "top_p": 0.9,  # mem0 默认传 top_p=0，DeepSeek 要求 (0,1]
+                "temperature": 0.1,
             },
         },
         "embedder": {
