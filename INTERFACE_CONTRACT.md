@@ -116,11 +116,19 @@ StandardMessage = {
 
 ## A7 联调发现（2026-06-17）
 
-> 窗口1 A7 联调暴露三个跨窗口对齐问题，登记如下。
+> 三窗口真实联调暴露的契约偏差。窗口1 已在 `orchestrator/` 内做了协议层适配与优雅降级，
+> 窗口3 已确认工具签名并导出 schema，以下为最终对齐结果。
 
-### F2：工具签名不一致（窗口1 调用侧 vs 窗口3 实际暴露）
+### F1. MCP transport 是标准 SSE，非裸 JSON-RPC POST（窗口1 已适配）
+- **现象**：§2.2 未明确 transport 细节。实测窗口3 用标准 MCP SSE transport：
+  `GET /sse` 建连 → 服务端回 `endpoint` 事件给出 `/messages/?session_id=xxx` →
+  POST JSON-RPC 到该 endpoint → 结果经 SSE 流回。直接 `POST /sse` 返回 `405`。
+- **处置**：窗口1 已改用官方 `mcp` SDK（`sse_client` + `ClientSession`）完成握手，
+  见 `orchestrator/mcp_client.py`。**无需其他窗口改动**，仅登记澄清协议。
 
-| MCP server | 窗口1 agents.py 调用（旧） | 窗口3 实际工具签名 | 说明 |
+### F2：工具签名不一致（已对齐）
+
+| MCP server | 编排核心调用（旧） | 窗口3 实际工具签名 | 说明 |
 |---|---|---|---|
 | presenton 9002 | `generate_ppt(topic, user_id)` | `generate_ppt(filename*, topic*, outline[]*, style?, language?)` | 无 `user_id`；必须提供 `outline[]`；`filename` 必填 |
 | office-word 9001 | `generate_document(topic, user_id)` | `create_document(filename*, content*, title?, author?)` | 工具名不同；无 `topic`/`user_id`；`content` 是已生成文本，非主题 |
@@ -137,7 +145,21 @@ paddleocr-mcp 的 `ocr_image` / `ocr_image_structured` 只做文字提取（OCR�
 
 窗口3确认（2026-06-17）：预期分工正确，ocr_image/ocr_image_structured 只做文字提取，批改由编排核心 LLM 处理。
 
-### F6：office-word create_document 返回"All connection attempts failed"
+### F4. Mem0 写入 type 枚举校验严格（窗口2 已确认）
+- §1.2 约定 `type: "mistake"|"profile"|"history"`。实测 8082 **严格校验**：传其他值
+  （如 `preference`）返回 `400 {"detail":"type must be mistake|profile|history"}`。
+- **处置**：编排核心 `memory_post` 需保证只用这三个枚举值。已确认非法值会被优雅降级
+  捕获不崩。登记提醒：OpenAPI schema 只标了 `type: string` 未暴露枚举，建议窗口2 在
+  schema 中补 enum 约束便于对齐。
+
+### F5. Mem0 写入依赖 embedding（窗口2 已修复）
+- 实测 `POST /v1/memory/{user_id}`（合法 type）返回 `500`，根因是上游 embedding 服务
+  `401 Authentication Fails (api key ****e95d invalid)`——即 `EMBEDDING_API_KEY` 未配。
+- **解法**：在 `.env` 填入真实的硅基流动 key（`EMBEDDING_API_KEY`），重启 mem0。
+  读路径（GET）正常，新用户返回 `{"profile":{},"mistakes":[],"history":[]}`。
+  编排核心 `save_memory` 已优雅降级（写失败不阻断主流程），配好 key 后写入自动恢复。
+
+### F6：office-word create_document 上游连接失败（窗口3 已修复）
 
 **根因**：office-word-mcp/server.py 原实现通过 `httpx` 代理转发到 `http://localhost:9011`（GongRzhe/Office-Word-MCP-Server），但该外部服务未部署，故所有连接均失败。
 

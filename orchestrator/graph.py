@@ -9,8 +9,13 @@ START → input_guardrail
               └─(multi) → execute_agents → merge_results
                                               ↓
                                        output_guardrail → save_memory → END
+
+Checkpointer：MemorySaver（内存持久化）。
+生产环境替换为 AsyncPostgresSaver（infra/ 就绪后切换）。
+每个请求用独立 thread_id 隔离，支持并发。
 """
 from langgraph.graph import StateGraph, END, START
+from langgraph.checkpoint.memory import MemorySaver
 
 from orchestrator.state import FamilyAgentState
 from orchestrator.nodes.guardrails import input_guardrail, friendly_reject, output_guardrail
@@ -71,5 +76,8 @@ def build_graph() -> StateGraph:
     return g
 
 
-# 编译为可执行图（模块级单例，供 server.py 使用）
-compiled_graph = build_graph().compile()
+# MemorySaver：进程内持久化，支持 thread_id 隔离。
+# 生产切换：from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+_checkpointer = MemorySaver()
+
+compiled_graph = build_graph().compile(checkpointer=_checkpointer)
