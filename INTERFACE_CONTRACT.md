@@ -111,3 +111,39 @@ StandardMessage = {
 2. 窗口3 单独验证：MCP 工具能被 MCP Inspector 调用
 3. 窗口1 单独验证：mock 接口下编排流程跑通
 4. 三方合流：企微发指令 → 编排 → 调用工具/知识库 → 回复
+
+---
+
+## A7 联调发现（2026-06-17）
+
+> 窗口1 A7 联调暴露三个跨窗口对齐问题，登记如下。
+
+### F2：工具签名不一致（窗口1 调用侧 vs 窗口3 实际暴露）
+
+| MCP server | 窗口1 agents.py 调用（旧） | 窗口3 实际工具签名 | 说明 |
+|---|---|---|---|
+| presenton 9002 | `generate_ppt(topic, user_id)` | `generate_ppt(filename*, topic*, outline[]*, style?, language?)` | 无 `user_id`；必须提供 `outline[]`；`filename` 必填 |
+| office-word 9001 | `generate_document(topic, user_id)` | `create_document(filename*, content*, title?, author?)` | 工具名不同；无 `topic`/`user_id`；`content` 是已生成文本，非主题 |
+| paddleocr 9003 | `ocr_and_grade(media_url, user_id, grade)` | `ocr_image(image_url?, image_path?, language?, return_layout?)` 和 `ocr_image_structured(image_url?, image_path?, subject?)` | 工具名不同；无批改逻辑；`grade` 不是参数 |
+
+**权威 schema 在 `shared/tool_schemas/`（office-word.json / presenton.json / paddleocr.json），字段名/类型/required 与窗口3 server 实际定义完全一致。窗口1 请据此修改 agents.py。**
+
+窗口3确认（2026-06-17）：已导出 schema，工具签名以 shared/tool_schemas/ 为准。
+
+### F3：paddleocr 分工确认
+
+paddleocr-mcp 的 `ocr_image` / `ocr_image_structured` 只做文字提取（OCR），
+不含批改逻辑。批改判分由窗口1 编排核心的 LLM 处理。
+
+窗口3确认（2026-06-17）：预期分工正确，ocr_image/ocr_image_structured 只做文字提取，批改由编排核心 LLM 处理。
+
+### F6：office-word create_document 返回"All connection attempts failed"
+
+**根因**：office-word-mcp/server.py 原实现通过 `httpx` 代理转发到 `http://localhost:9011`（GongRzhe/Office-Word-MCP-Server），但该外部服务未部署，故所有连接均失败。
+
+**修复**（2026-06-17，窗口3）：
+- 删除对 9011 的 HTTP 调用，改用本地 `python-docx` 直接读写 .docx 文件。
+- `create_document`、`read_document`、`append_to_document` 现在无外部依赖，直接在 `shared/outputs/` 操作文件。
+- `list_documents` 扫描 `shared/outputs/*.docx`，不变。
+- 新增 `python-docx>=1.1.2` 到 `mcp-servers/requirements.txt`。
+- 验证：MCP client 调 `create_document` 写出 36 KB .docx，`http://localhost:8090/files/{name}` HTTP 200 下载，read/append 全链路通过。

@@ -15,5 +15,11 @@ starlette==0.41.3
 fastapi==0.115.6
 python-multipart==0.0.12
 
+# 测试依赖（tools/test/integration_test.py 需要生成测试图片）
+Pillow>=11.0.0
+
+# Word 文档生成（office-word-mcp 本地直接读写，无需外部 9011 服务）
+python-docx>=1.1.2
+
 # 工具库
 anyio==4.6.2
